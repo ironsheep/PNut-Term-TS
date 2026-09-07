@@ -18,6 +18,24 @@
 
 ## How to read this plan
 
+- **🔴 THIS PASS IS A TWO-BUILD COMPARISON (2026-09-07).** Every test and every Phase-D
+  item carries a **Run 2026-09-07** block under its historical `**Status:**` line, with one
+  row for **PNut** (the Pascal original, on Windows) and one for **PNut-ts**. Tick the box
+  to record a pass; add anything worth saying after the colon. Leave the box unticked for a
+  fail and say what happened. The old `**Status:**` line is the historical record — **do not
+  overwrite it.**
+  - **Run PNut first.** It is the v55 reference, so its column is what "correct" means.
+  - **A PNut FAILURE is a finding about this document, not about PNut.** If the reference
+    build does not do what a step says it should, the step's expectation is wrong — which
+    means **Part A of `DOCs/SSDB-INPUT-PARITY-AUDIT-2026-08-12.md` is corrected first**, and
+    the correction then flows to this plan, the manual source and its handoff feed. Note it
+    in the PNut row and keep going; do not "fix" the step in place while running.
+  - **PNut passes / PNut-ts fails** is the ordinary parity defect — that one is ours.
+  - **Both fail the same way** almost always means the step is wrong, not that both builds
+    are. Treat it as the first case.
+  - The **Test summary matrix** at the foot of the document has a column per build for the
+    roll-up. Fill it at the end if you like, or leave it and I will transcribe it from the
+    per-test rows when you bring the results back.
 - **You load a file per test — you don't type code.** Each test starts with a
   **▶ Load** line naming the `.spin2` file. Compile and download it with:
   ```bash
@@ -151,6 +169,10 @@ Tests 1–2 while that file is still loaded.
 
 **Status:** ✅ PASS (v0.9.81)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** `test01_basic_spin.spin2`
 
 **What this tests**: The debugger window opens and every panel is present, correctly
@@ -185,6 +207,10 @@ ON HW TEST: PASS w/Version 0.9.81! (2026-06-23)
 ## Test 1: Basic connection — single step
 
 **Status:** ✅ PASS (v0.9.82)
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 **▶ Load:** keep `test01_basic_spin.spin2` loaded (from Test 0).
 
@@ -222,6 +248,10 @@ Logs confirm 1380 breaks at ~12 Hz with no >250 ms gap (audit 2026-06-24).
 ## Test 2: Repeat mode — continuous execution
 
 **Status:** ✅ PASS (v0.9.83)
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 **▶ Load:** keep `test01` loaded.
 
@@ -263,6 +293,10 @@ ON HW TEST: pass v0.9.83
 ## Test 3: Register watch and reset
 
 **Status:** ✅ **PASS (v0.9.97, recompiled `test03`)** — WATCH populates with low registers `count`/`limit`; R-key + click reset work
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 > **▶ Requires the recompiled `test03_pasm_regs.spin2`** (program fixed to use low
 > registers). `pnut-ts -d test03_pasm_regs.spin2`, then download the new `.bin`.
@@ -308,6 +342,10 @@ low registers (`count`/`limit`) as you step; R-key and click both reset the list
 ## Test 4: Disassembly navigation — modes and scrolling
 
 **Status:** ✅ PASS (v0.9.86 — macOS shift-wheel + right-click plumbing fixed)
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 **▶ Load:** keep `test03` loaded.
 
@@ -379,6 +417,10 @@ ON HW TEST: v0.9.86: right-click WORKS ✅ (root cause: macOS/Electron delivers 
 
 **Status:** ✅ PASS (v0.9.86 — steps 3–4 expectations corrected to exact Pascal parity)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** `test01_basic_spin.spin2` — *or do this test right after Test 2, while
 `test01` is still loaded* (see Suggested load order).
 
@@ -435,6 +477,10 @@ ON HW TEST: v0.9.86 - PASS
 
 **Status:** ✅ PASS (v0.9.86 — needed test-program fix: `cmp … #9 wc`)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** `test06_flags_skip.spin2`
 
 **The program**: sets **Z** (`cmp wz`) then **C** (`cmp wc`), then a `skip #%1010` over the next four `nop`s (2nd and 4th skipped), then loops.
@@ -484,6 +530,10 @@ ON HW TEST: v0.9.86 PASS
 
 **Status:** ✅ PASS (v0.9.86 — AUGS double-step is correct v55 behavior, not a bug)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** `test07_stack_ptr.spin2`
 
 **The program**: sets PTRA/PTRB, `wrlong`s test values to hub, then `call`s a subroutine that `ret`s.
@@ -522,6 +572,10 @@ ON HW TEST: v0.9.86 PASS
 ## Test 8: Hub memory viewer and heatmap
 
 **Status:** ✅ PASS (v0.9.87 — heat decay made wall-clock-based so the trail is visible)
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 **▶ Load:** `test08_hub_writes.spin2`
 
@@ -571,6 +625,10 @@ ON HW TEST: v0.9.87 pass timeout might still be too short? but it does appear to
 
 **Status:** ✅ PASS (v0.9.87 — bit-orientation is exact Pascal parity; note added to steps)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** `test09_pins.spin2`
 
 **The program**: `drvh`/`drvl`/`fltl` to drive pins 0, 1, 16 and float pin 2, then loops.
@@ -601,6 +659,10 @@ note added to steps 1–2 above. No code change.
 ## Test 10: Smart pin watch
 
 **Status:** ✅ **PASS (v0.9.97, recompiled `test10`)** — pin 0 now reported (IN raised), `P00` shows in the SMART watch with a changing value
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 > **▶ Requires the recompiled `test10_smart_pin.spin2`** (NCO fixed to raise IN every poll).
 > `pnut-ts -d test10_smart_pin.spin2`, then download the new `.bin`.
@@ -675,6 +737,10 @@ more dynamic if a bigger visual swing is wanted.
 
 **Status:** ✅ PASS (v0.9.94 — regressed v0.9.89–93 by the comms rework, re-fixed v0.9.94)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** `test11_interrupts.spin2`
 
 **The program**: enables INT1 on a CT1 event and waits for it; the handler re-arms CT1 and `reti1`s.
@@ -713,6 +779,10 @@ feed). test11 passes again on real HW.
 ## Test 12: Multi-COG debugging
 
 **Status:** ✅ PASS (v0.9.95 — Cert Pass 1 gate met; both cog windows step independently)
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 **▶ Load:** `test12_multicog.spin2`
 
@@ -773,6 +843,10 @@ acceptance gate MET.
 ## Test 13: Event breakpoints
 
 **Status:** ✅ **PASS (v0.9.97)** — event-name click arms the break (v0.9.96) + HUB-grid blink fixed (v0.9.97); HW-confirmed
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 **▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
@@ -855,6 +929,10 @@ event-breakpoint suite.
 **Status:** ✅ **PASS (v0.9.97)** — hint strings Pascal-verbatim (doc corrected; the app was
 already correct — steps 1/6/7 "diff text" was correct behavior)
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 **▶ Load:** any program — run this **throughout** Phases B and C by hovering as you go.
 
 **What this tests**: Hint bar content changes based on mouse hover position.
@@ -920,6 +998,10 @@ heatmap). Note the 5-digit hub address before each notch.
 
 **Status:** ⬜ NOT RUN
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | One wheel notch **down** | Address increases by exactly **`$10`** (one row). The dump scrolls by one line. |
@@ -935,6 +1017,10 @@ heatmap). Note the 5-digit hub address before each notch.
 
 **Status:** ⬜ NOT RUN
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Note the hub address. Move the pointer over the **hub heatmap** and wheel down 5 notches | **Nothing moves.** The hub address is unchanged; the dump does not scroll. |
@@ -944,6 +1030,10 @@ heatmap). Note the 5-digit hub address before each notch.
 ### D3: Hub address digits (Part A §A.4)
 
 **Status:** ⬜ NOT RUN
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -955,6 +1045,10 @@ heatmap). Note the 5-digit hub address before each notch.
 
 **Status:** ⬜ NOT RUN
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Click the **5th character** of the **3rd ASCII row** | Hub address advances by exactly **`$24`** (2 rows × `$10` + 4). |
@@ -964,6 +1058,10 @@ heatmap). Note the 5-digit hub address before each notch.
 ### D5: Hub heat-map click (Part A §A.3 — `MapHubAddr`)
 
 **Status:** ⬜ NOT RUN
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -976,6 +1074,10 @@ heatmap). Note the 5-digit hub address before each notch.
 Run in cog space first (PC below `$400`).
 
 **Status:** ⬜ NOT RUN
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -991,6 +1093,10 @@ Run in cog space first (PC below `$400`).
 
 **Status:** ⬜ NOT RUN
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Park the HUB pane at a memorable address (e.g. `$01000`) and click **PC** to return to follow-PC | HUB pane still shows `$01000`. |
@@ -1003,9 +1109,17 @@ they are the discriminating form of the old step 8.
 
 **Status:** ⬜ NOT RUN
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 ### D9: Right-click BREAK, and the hub-mode breakpoint refusal (Part A §A.2/§A.3)
 
 **Status:** ⬜ NOT RUN
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1017,6 +1131,10 @@ they are the discriminating form of the old step 8.
 
 **Status:** ⬜ NOT RUN
 
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
+
 | Step | Action | Expected Display |
 |------|--------|-----------------|
 | 1 | Click an **interrupt vector** row (IJMP3..IRET1) whose value is a **hub** address (≥ `$400`) | Disassembly switches to **hub** mode at that address, and the HUB pane follows. It must **not** lock to cog space. |
@@ -1027,6 +1145,10 @@ they are the discriminating form of the old step 8.
 ### D11: Keyboard — control combinations and per-row hints (Part A §A.1/§A.5)
 
 **Status:** ⬜ NOT RUN
+
+**Run 2026-09-07 — tick to pass, notes after the colon:**
+- [ ] **PNut** (Windows, v55 reference):
+- [ ] **PNut-ts** (v1.0.6):
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1048,34 +1170,36 @@ cosmetic" are not dispositions.
 
 ## Test summary matrix
 
-| Test | Phase | Feature Area | Status | Load file |
-|------|-------|-------------|--------|-----------|
-| 0 | A | Visual verification (no interaction) | ✅ v0.9.81 | `test01_basic_spin.spin2` |
-| 1 | B | Basic connection, single step | ✅ v0.9.82 | `test01` (keep loaded) |
-| 2 | B | Repeat mode, throttling | ✅ v0.9.83 | `test01` (keep loaded) |
-| 3 | B | Register watch, reset | ✅ v0.9.97 | `test03_pasm_regs.spin2` |
-| 4 | B | Disassembly navigation | ✅ v0.9.86 | `test03` (keep loaded) |
-| 5 | B | Button behavior | ✅ v0.9.86 | `test01` (reuse — do with Tests 1–2) |
-| 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 | `test06_flags_skip.spin2` |
-| 7 | B | SFR, stack, pointers | ✅ v0.9.86 | `test07_stack_ptr.spin2` |
-| 8 | B | Hub memory viewer | ✅ v0.9.87 | `test08_hub_writes.spin2` |
-| 9 | B | Pin registers, status | ✅ v0.9.87 | `test09_pins.spin2` |
-| 10 | C | Smart pin watch | ✅ v0.9.97 | `test10_smart_pin.spin2` |
-| 11 | C | Interrupts, exec mode | ✅ v0.9.94 | `test11_interrupts.spin2` |
-| 12 | C | Multi-COG | ✅ v0.9.95 | `test12_multicog.spin2` |
-| 13 | C | Event breakpoints | ✅ v0.9.97 | `test11` (keep loaded) |
-| 14 | B/C | Hint bar | ✅ v0.9.97 | Any (run throughout) |
-| D1 | D | Hub-data wheel magnitudes | ⬜ v1.0.1 | `test08_hub_writes.spin2` |
-| D2 | D | Heat-map excluded from the wheel | ⬜ v1.0.1 | `test08` (keep loaded) |
-| D3 | D | Hub address digits | ⬜ v1.0.1 | `test08` (keep loaded) |
-| D4 | D | Hub ASCII column click | ⬜ v1.0.1 | `test08` (keep loaded) |
-| D5 | D | Hub heat-map click | ⬜ v1.0.1 | `test08` (keep loaded) |
-| D6 | D | Disassembly wheel: steps, coupling, clamp | ⬜ v1.0.1 | `test03_pasm_regs.spin2` |
-| D7 | D | dmPC does not drag the HUB pane | ⬜ v1.0.1 | `test03` (keep loaded) |
-| D8 | D | REG/LUT centering and clamp (Test 4 8–8c) | ⬜ v1.0.1 | `test03` (keep loaded) |
-| D9 | D | Right-click BREAK; hub breakpoint refusal | ⬜ v1.0.1 | `test08` (keep loaded) |
-| D10 | D | SFR/stack routing into hub mode | ⬜ v1.0.1 | `test07_stack_ptr.spin2` |
-| D11 | D | Ctrl combinations and per-row hints | ⬜ v1.0.1 | `test11_interrupts.spin2` |
+*`PNut` and `PNut-ts` are the 2026-09-07 two-build run; `Status` is the historical record.*
+
+| Test | Phase | Feature Area | Status | PNut | PNut-ts | Load file |
+|------|-------|-------------|--------|------|---------|-----------|
+| 0 | A | Visual verification (no interaction) | ✅ v0.9.81 |  |  | `test01_basic_spin.spin2` |
+| 1 | B | Basic connection, single step | ✅ v0.9.82 |  |  | `test01` (keep loaded) |
+| 2 | B | Repeat mode, throttling | ✅ v0.9.83 |  |  | `test01` (keep loaded) |
+| 3 | B | Register watch, reset | ✅ v0.9.97 |  |  | `test03_pasm_regs.spin2` |
+| 4 | B | Disassembly navigation | ✅ v0.9.86 |  |  | `test03` (keep loaded) |
+| 5 | B | Button behavior | ✅ v0.9.86 |  |  | `test01` (reuse — do with Tests 1–2) |
+| 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 |  |  | `test06_flags_skip.spin2` |
+| 7 | B | SFR, stack, pointers | ✅ v0.9.86 |  |  | `test07_stack_ptr.spin2` |
+| 8 | B | Hub memory viewer | ✅ v0.9.87 |  |  | `test08_hub_writes.spin2` |
+| 9 | B | Pin registers, status | ✅ v0.9.87 |  |  | `test09_pins.spin2` |
+| 10 | C | Smart pin watch | ✅ v0.9.97 |  |  | `test10_smart_pin.spin2` |
+| 11 | C | Interrupts, exec mode | ✅ v0.9.94 |  |  | `test11_interrupts.spin2` |
+| 12 | C | Multi-COG | ✅ v0.9.95 |  |  | `test12_multicog.spin2` |
+| 13 | C | Event breakpoints | ✅ v0.9.97 |  |  | `test11` (keep loaded) |
+| 14 | B/C | Hint bar | ✅ v0.9.97 |  |  | Any (run throughout) |
+| D1 | D | Hub-data wheel magnitudes | ⬜ v1.0.1 |  |  | `test08_hub_writes.spin2` |
+| D2 | D | Heat-map excluded from the wheel | ⬜ v1.0.1 |  |  | `test08` (keep loaded) |
+| D3 | D | Hub address digits | ⬜ v1.0.1 |  |  | `test08` (keep loaded) |
+| D4 | D | Hub ASCII column click | ⬜ v1.0.1 |  |  | `test08` (keep loaded) |
+| D5 | D | Hub heat-map click | ⬜ v1.0.1 |  |  | `test08` (keep loaded) |
+| D6 | D | Disassembly wheel: steps, coupling, clamp | ⬜ v1.0.1 |  |  | `test03_pasm_regs.spin2` |
+| D7 | D | dmPC does not drag the HUB pane | ⬜ v1.0.1 |  |  | `test03` (keep loaded) |
+| D8 | D | REG/LUT centering and clamp (Test 4 8–8c) | ⬜ v1.0.1 |  |  | `test03` (keep loaded) |
+| D9 | D | Right-click BREAK; hub breakpoint refusal | ⬜ v1.0.1 |  |  | `test08` (keep loaded) |
+| D10 | D | SFR/stack routing into hub mode | ⬜ v1.0.1 |  |  | `test07_stack_ptr.spin2` |
+| D11 | D | Ctrl combinations and per-row hints | ⬜ v1.0.1 |  |  | `test11_interrupts.spin2` |
 
 ---
 
