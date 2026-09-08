@@ -175,7 +175,12 @@ echo "-- content drift (ADVISORY — never fatal) --"
 # are matched against the instruments' real output shapes, and a zero here is only
 # trustworthy because the shapes were verified against a run that had findings.
 #   ORPHAN entries look like:     "  path/to/doc.md:180  no source literal contains: X"
-#   DUPLICATE entries look like:  "  `<the repeated material>`"
+#   DUPLICATE entries take TWO shapes, and both must be counted:
+#     "  block starting '<first line>'"   — a fenced block in 2+ documents
+#     "  `<the repeated UI claim>`"       — an inline claim in 2+ documents
+#   Counting only the second under-reported the real total as 0 once the inline-claim
+#   half was cleaned up (2026-09-08) — a zero that was true of one half and read as
+#   true of both, which is the silent-clean failure the comment above warns about.
 if [[ -r scripts/claude/check_doc_claims.sh ]]; then
   cl="$(bash scripts/claude/check_doc_claims.sh 2>&1)"
   if [[ -z "$cl" ]]; then
@@ -186,7 +191,7 @@ if [[ -r scripts/claude/check_doc_claims.sh ]]; then
     note "doc-claim output did not contain the expected '== ORPHAN' section — UNCHECKED, not clean"
   else
     orphans="$(printf '%s\n' "$cl" | grep -c 'no source literal contains:')"
-    dupes="$(printf '%s\n' "$cl" | awk '/^== DUPLICATE/{f=1;next} f' | grep -cE '^  `')"
+    dupes="$(printf '%s\n' "$cl" | awk '/^== DUPLICATE/{f=1;next} f' | grep -cE '^  (block starting |`)')"
     note "doc-claim: ${orphans} orphan, ${dupes} duplicate — review, do not auto-fix"
     note "  (Pascal identifiers quoted in the reference docs are expected noise here)"
   fi

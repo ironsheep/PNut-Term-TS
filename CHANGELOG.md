@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.7 (2026-09-08)
+
+The debugger's hint bar now tells you the P2's clock speed whenever you are not pointing at
+anything.
+
+Move the mouse off the debugger window — or open it and don't touch it yet — and the strip
+along the bottom reads `Clock frequency is 200,000,000 Hz` instead of going blank. It is the
+clock the P2 actually reported, which is worth having on screen: it is the number that
+settles whether a program is running at the speed you think you compiled. Point at any
+region and that region's hint replaces it, exactly as before.
+
+### Bug Fixes
+
+- The debugger's hint bar shows the reported clock frequency while the pointer is away from
+  the window, and from the moment the window opens — it previously went blank
+
 ## v1.0.6 (2026-08-29)
 
 The download's CRC check now actually runs, and the log says so the moment it passes.
