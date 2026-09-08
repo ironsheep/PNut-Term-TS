@@ -1,0 +1,55 @@
+'' =============================================================================
+'' Single-Step Debugger Test Program D10 — SFR and stack click routing
+''
+'' Covers Test Plan item:
+''   Phase D, D10 — SFR and stack routing into hub mode (Part A §A.3)
+''
+'' WHY THIS PROGRAM EXISTS: D10 was originally written against
+'' test07_stack_ptr.spin2, where three of its four steps are IMPOSSIBLE to
+'' perform — that program leaves the interrupt vectors unwritten, sets
+'' PTRA=$1000 and PTRB=$2000 (both already hub-range), and leaves only a COG
+'' return address on the stack. The tester cannot choose those values at run
+'' time, so the steps could not be satisfied. Reported by the 2026-09-07
+'' hardware run as "instructions unclear"; the instructions were fine, the
+'' program could not produce the states they described.
+''
+'' This program plants each of the four values D10 needs, at known addresses:
+''
+''   IJMP1 ($1F4, row 4)  = $00800   an interrupt VECTOR holding a HUB address
+''   IRET1 ($1F5, row 5)  = $0F0     an interrupt VECTOR holding a COG address
+''   PTRA  ($1F8, row 8)  = $100     a DATA pointer holding a sub-$400 value
+''   STK0                 = $00C00   a stack slot holding a HUB-range value
+''
+'' The PTRA value is the discriminating case for Part A §A.3: it is below $400,
+'' yet its row is a data pointer rather than one of the first six interrupt
+'' vectors, so it must still route to HUB. A build that tests only the value —
+'' the F7 defect — sends it to cog space and fails here.
+''
+'' PASM-only: cog 0 boots directly into this DAT at $000, so DEBUG_MAIN breaks
+'' on the FIRST instruction with nothing in the way.
+'' =============================================================================
+CON
+  _clkfreq = 200_000_000
+  DEBUG_MAIN = 1
+
+DAT
+                org
+
+'' Step through the setup block; every value below is in place by the time
+'' execution reaches `parked`.
+entry           mov     ijmp1, ##$00800          ' D10 step 1: vector -> HUB address
+                mov     iret1, #$0F0             ' D10 step 2: vector -> COG address
+                mov     ptra,  #$100             ' D10 step 3: data pointer, value < $400
+                mov     ptrb,  ##$2000           '   (a plain hub-range pointer for contrast)
+
+                mov     stkval, ##$00C00
+                push    stkval                   ' D10 step 4: STK0 = hub-range value
+                                                 '   PUSH's immediate form caps at 511, so the
+                                                 '   value is staged in a register first.
+
+'' Park in a tight loop so the panel values stay put while you click them.
+'' Nothing below writes PTRA, the vectors, or the stack.
+parked          nop
+                jmp     #parked
+
+stkval          long    0

@@ -114,11 +114,20 @@ export class DebuggerInteraction {
     // Hover → hint bar.
     this.canvas.addEventListener('mousemove', (e) => {
       const { x, y } = this.toCanvasPx(e);
+      this.renderer.pointerOffForm = false;
       this.updateHint(x, y);
     });
     this.canvas.addEventListener('mouseleave', () => {
       this.rightGestureLatched = false;      // press dragged off-canvas; don't strand the latch
+      // Pascal FormMouseMoveTimeout (:703-713) does NOT clear the hint when the
+      // pointer leaves — it re-runs FormMouseMove at (0,0), which blanks Hint and
+      // matches no region, and then disables the timer so the redraw's final
+      // branch (:1913-1915) fills the bar with the CLOCK FREQUENCY. So the hint
+      // text clears but the bar does not go empty: it carries a standing idle
+      // hint. We blanked it outright until 2026-09-08 — HW-observed on PNut and
+      // confirmed against the source. The renderer supplies the idle text.
       this.renderer.hintText = '';
+      this.renderer.pointerOffForm = true;
       this.renderer.render();
     });
   }

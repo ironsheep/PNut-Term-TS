@@ -97,6 +97,21 @@ function ascii(byte: number): string {
  *
  * @param skipOn  ExecMode == 0 && CallDepth == 0 (SKIP genuinely in effect).
  */
+/**
+ * The hint bar's OFF-FORM idle text — Pascal DebuggerUnit.pas:1913-1915:
+ *
+ *   else if MouseMoveTimer.Enabled = False then
+ *     Hint := 'Clock frequency is ' + Format('%1.0n', [DebuggerMsg[mFREQ]*1.0]) + ' Hz';
+ *
+ * `%1.0n` is grouped thousands with no decimals, hence the en-US grouping here.
+ * Before the first breakpoint the frequency is unknown; rather than render a
+ * misleading "0 Hz" we render nothing until the P2 reports one.
+ */
+export function idleHintText(freqHz: number): string {
+  if (!freqHz) return '';
+  return `Clock frequency is ${freqHz.toLocaleString('en-US')} Hz`;
+}
+
 export function shouldStrikeSkipped(
   addr: number,
   pc: number,
@@ -1159,13 +1174,40 @@ export class DebuggerRenderer {
   // ──────────────────────────────────────────────────────────────────────
 
   public hintText: string = '';
+
+  /**
+   * True while the pointer is OFF the window — the analog of Pascal's
+   * `MouseMoveTimer.Enabled = False` (DebuggerUnit.pas:703-713, where
+   * FormMouseMoveTimeout detects the pointer leaving and cancels the timer).
+   * Starts TRUE because Delphi creates that timer disabled, so PNut shows the
+   * idle hint from its very first repaint, before the mouse has ever entered.
+   */
+  public pointerOffForm: boolean = true;
+
   private renderHint(): void {
     const p = PANEL.HINT;
-    if (this.hintText) {
+    // Pascal's hint chain (DebuggerUnit.pas:1796-1917) ends with
+    //
+    //   // Make hint if off form
+    //   else if MouseMoveTimer.Enabled = False then
+    //     Hint := 'Clock frequency is ' + Format('%1.0n', [DebuggerMsg[mFREQ]*1.0]) + ' Hz';
+    //
+    // so the bar is NOT blank when the pointer leaves — it carries a standing
+    // IDLE hint naming the clock frequency, and holds it until the pointer
+    // returns. HW-observed on PNut 2026-09-07 and confirmed in the source.
+    // Distinct from hovering a hintless region ON the form, which really is
+    // blank: FormMouseMove opens with `Hint := ''` (:638) and only a matching
+    // MouseWithin re-fills it.
+    const text = this.hintText || (this.pointerOffForm ? this.idleHint() : '');
+    if (text) {
       // §8 — fly-over hints are orange italic (Pascal DebuggerUnit.pas:1917,
       // cIndicator + fsItalic), not white.
-      this.drawText(this.ctx, this.hintText, p.l + 1, p.t, COLOR.cIndicator, false, true);
+      this.drawText(this.ctx, text, p.l + 1, p.t, COLOR.cIndicator, false, true);
     }
+  }
+
+  private idleHint(): string {
+    return idleHintText(this.state.message[18]);
   }
 
   // ──────────────────────────────────────────────────────────────────────

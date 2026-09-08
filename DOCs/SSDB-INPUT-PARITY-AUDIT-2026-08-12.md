@@ -195,10 +195,31 @@ No other region responds to the wheel.
 
 ## A.5 Hover hints
 
-Every `MouseWithin` call carries a hint string, recomputed on every mouse-move; a 50 ms timer
-(:703) detects the pointer leaving the form and clears the hint. Two hints are dynamic: the CT
-box (elapsed seconds at the current clock frequency) and the XBYTE box (a 10-branch decode of
-the XBYTE mode word, :1799-1825). The GO hint changes with `RepeatMode`.
+Every `MouseWithin` call carries a hint string, recomputed on every mouse-move.
+`FormMouseMove` opens with `Hint := ''` (:638) and only a matching `MouseWithin` refills it, so
+hovering a region with no hint really does blank the bar.
+
+**Leaving the form does NOT blank it — it shows a standing IDLE hint.** ⚠ *Corrected
+2026-09-08; the original text here said the 50 ms timer "detects the pointer leaving the form
+and clears the hint", which is a misreading.* `FormMouseMoveTimeout` (:703-713) clears nothing.
+It re-runs `FormMouseMove(Self, [], 0, 0)` — which blanks `Hint` and matches no region — and
+then **disables** the timer, after which the redraw's final branch fires (:1913-1915):
+
+```pascal
+  // Make hint if off form
+  else if MouseMoveTimer.Enabled = False then
+    Hint := 'Clock frequency is ' + Format('%1.0n', [DebuggerMsg[mFREQ] * 1.0]) + ' Hz';
+```
+
+So the bar reads **`Clock frequency is 200,000,000 Hz`** (`%1.0n` = grouped thousands, no
+decimals) for as long as the pointer is away. Delphi creates that timer **disabled**, so this
+is also the state on the very first repaint, before the mouse has ever entered the window.
+Observed on PNut/Windows 2026-09-07 and then confirmed against the source; the reading, not the
+reference, was wrong.
+
+Three hints are dynamic: the CT box (elapsed seconds at the current clock frequency), the XBYTE
+box (a 10-branch decode of the XBYTE mode word, :1799-1825), and the GO hint, which changes
+with `RepeatMode`.
 
 Complete list of non-empty hints: REG box, REG map, LUT box, LUT map, C flag, Z flag, PC, SKIP,
 disassembly, register watch, SFR box, events box, events list (per-row, naming the hovered
@@ -347,6 +368,11 @@ different printed keys than in PNut.
 - The dynamic CT and XBYTE hint decoders.
 - Disassembly left-click = follow-PC. This **is** PNut behavior.
 
+> **2026-09-08:** a seventeenth finding, **F19**, was added below from the two-build hardware
+> run. It was not missed by this audit — it was *created* by it: §A.5 misread the mouse-off
+> timer, and the misreading propagated to the code, the manual source and the test plan.
+> §A.5 is corrected above.
+
 ## B.3a Disposition — all sixteen findings CLOSED in v1.0.1 (2026-08-12)
 
 Implemented in the SSDB input-parity sprint; every item below has assertions in
@@ -387,6 +413,29 @@ Recorded rather than silently resolved, per the sprint plan:
    whatever `KeyShift` was left from the last captured non-character key. We implement the
    straightforward reading — the **current** modifier state, which makes Ctrl+K page by
    `$1000` — and record the divergence here rather than reproduce a stale-state artifact.
+
+### 🟠 F19 — the hint bar goes blank when the pointer leaves; PNut shows the clock frequency
+
+**Found by the 2026-09-07 two-build hardware run (Test 14), not by this audit** — and it is the
+first defect this audit's own *reading* produced rather than merely missed. §A.5 asserted that
+the mouse-off timer "clears the hint"; the timer does no such thing, and the assertion was
+carried into the implementation, the manual source and the test plan without ever being checked
+against the source it cited.
+
+`DebuggerInteraction.ts` blanked `hintText` on `mouseleave`, so our bar goes empty. PNut fills
+it with `Clock frequency is <N> Hz` and holds that until the pointer returns.
+
+**Closed 2026-09-08.** `idleHintText()` in `DebuggerRenderer.ts` (a pure function, exported and
+unit-tested like `shouldStrikeSkipped`), driven by a `pointerOffForm` flag that mirrors Pascal's
+`MouseMoveTimer.Enabled` — including its initial state, since Delphi creates that timer
+disabled. An unreported frequency renders **nothing** rather than a misleading `0 Hz`. Four
+assertions in `tests/debuggerInteraction.test.ts`, red-proofed against the pre-fix tree.
+
+**The lesson is about this document, not about the code.** §A.5's claim cited `:703` and was
+wrong about what `:703` does. Every other Part A claim carries a citation of the same kind. A
+citation records where the reader looked, not that they read it correctly — which is exactly
+the `DOCs/pascal-REF/*` trust-chain hazard, arriving this time in the audit that was written to
+be the corrective for it.
 
 ## B.4 Suggested work order
 

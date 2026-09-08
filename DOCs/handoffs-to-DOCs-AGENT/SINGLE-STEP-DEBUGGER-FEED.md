@@ -3,8 +3,8 @@
 > ## 📤 HANDOFF SNAPSHOT — not the maintained copy
 >
 > The canonical document is **`DOCs/manual-source/SINGLE-STEP-DEBUGGER-MANUAL-SOURCE.md`**.
-> This is a point-in-time copy made for the docs agent, snapshotted **2026-09-07** at
-> **v1.0.6**, with the whole input surface re-verified against the code that day.
+> Re-snapshotted **2026-09-08** after the PNut reference run corrected the hint-bar section:
+> leaving the window shows a standing **clock-frequency idle hint**, it does not blank.
 >
 > Edit the canonical copy, then re-snapshot. Never edit both.
 
@@ -303,6 +303,20 @@ the pin box, the hub tab, the hub box, the hub address digits, and the hub heat-
 leaving the previous text: the smart-pin watch box, and the data sub-regions (SFR values,
 stack values, pointer address/data/characters, hub data bytes and characters). PNut passes
 an empty string for these, and so do we; an invented hint here was removed as a deviation.
+
+**Move the pointer off the window and the bar does *not* go empty.** It shows a standing
+idle hint naming the clock the P2 reported:
+
+```
+Clock frequency is 200,000,000 Hz
+```
+
+and holds it until the pointer comes back. This is also what the bar reads when the window
+first opens, before the mouse has ever been over it — so a reader who has not touched the
+window yet sees the clock frequency, not a blank strip. (Hardware-observed on PNut
+2026-09-07 and confirmed against `DebuggerUnit.pas:1913-1915`; earlier revisions of this
+document wrongly said the bar cleared on leaving.) Before the first breakpoint the frequency
+is not yet known, and the bar stays empty rather than claiming `0 Hz`.
 
 Most hints name the action available on that region, e.g. the disassembly box reads
 *"L-Click to lock to PC | R-Click to toggle break address | Mousewheel {+Ctrl/Shift}

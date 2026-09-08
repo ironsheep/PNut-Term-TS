@@ -174,6 +174,7 @@ export interface MockRenderer {
   render: jest.Mock;
   /** Hover-hint text the interaction layer writes; the real renderer paints it. */
   hintText: string;
+  pointerOffForm: boolean;
 }
 export function makeMockRenderer(): MockRenderer {
   const offscreen = { x: -1, y: -1, w: 0, h: 0 };
@@ -187,7 +188,10 @@ export function makeMockRenderer(): MockRenderer {
     lutMapBoundsPx: jest.fn().mockReturnValue(offscreen),
     disassemblyLineAddress: jest.fn().mockReturnValue(0x000),
     render: jest.fn(),
-    hintText: ''
+    hintText: '',
+    // Pascal's MouseMoveTimer is created DISABLED, so PNut shows the off-form
+    // idle hint from its first repaint — the mock starts in the same state.
+    pointerOffForm: true
   };
 }
 

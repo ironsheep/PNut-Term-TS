@@ -15,6 +15,7 @@ import {
   BREAK_MAIN, BREAK_INIT, BREAK_DEBUG, PANEL, EVENT_NAMES
 } from '../src/classes/debugger/shared/constants';
 import { DisMode } from '../src/classes/debugger/renderer/DebuggerState';
+import { idleHintText } from '../src/classes/debugger/renderer/DebuggerRenderer';
 
 /** Pull a DOM listener the interaction registered on the (mock) canvas. */
 function listener(h: ReturnType<typeof makeInteraction>, type: string): (e: any) => void {
@@ -552,6 +553,45 @@ describe('DebuggerInteraction — hover hints (Part A §A.5, F12/F15/F16)', () =
       .toBe('Cog Register Bitmap/Heatmap | Click to lock disassembly to REG subrange');
     expect(hintAt(h, LUTSTRIP.x + 1, LUTSTRIP.y + 1))
       .toBe('LUT Register Bitmap/Heatmap | Click to lock disassembly to LUT subrange');
+  });
+
+  // ── F19 (HW-found 2026-09-07, PNut on Windows; confirmed in DebuggerUnit.pas)
+  //
+  // Part A §A.5 said the 50 ms timer "detects the pointer leaving the form and
+  // CLEARS the hint". It does not. FormMouseMoveTimeout (:703-713) re-runs
+  // FormMouseMove at (0,0) — which blanks Hint and matches no region — and then
+  // DISABLES the timer, so the redraw's final branch (:1913-1915) fills the bar
+  // with the clock frequency. The bar therefore carries a standing IDLE hint
+  // while the pointer is away; it does not go empty. We blanked it outright.
+  describe('F19 — the hint bar carries an idle hint while the pointer is off the form', () => {
+    it('leaving the window marks the pointer off-form (so the renderer can idle-hint)', () => {
+      const h = harness();
+      // Enter via the real listener — updateHint alone does not move the pointer.
+      listener(h, 'mousemove')({ clientX: HUB.x + 10, clientY: HUB.y + 10 });
+      expect(h.renderer.pointerOffForm).toBe(false);
+
+      listener(h, 'mouseleave')({});
+      expect(h.renderer.hintText).toBe('');        // the fly-over text does clear …
+      expect(h.renderer.pointerOffForm).toBe(true); // … and the idle hint takes over
+    });
+
+    it('re-entering the window cancels the idle hint', () => {
+      const h = harness();
+      listener(h, 'mouseleave')({});
+      expect(h.renderer.pointerOffForm).toBe(true);
+
+      listener(h, 'mousemove')({ clientX: HUB.x + 10, clientY: HUB.y + 10 });
+      expect(h.renderer.pointerOffForm).toBe(false);
+    });
+
+    it('the idle text is Pascal-verbatim, with %1.0n grouped thousands', () => {
+      expect(idleHintText(200_000_000)).toBe('Clock frequency is 200,000,000 Hz');
+      expect(idleHintText(20_000_000)).toBe('Clock frequency is 20,000,000 Hz');
+    });
+
+    it('reports NO idle hint before the P2 has given a frequency (never "0 Hz")', () => {
+      expect(idleHintText(0)).toBe('');
+    });
   });
 
   it('F16 — the smart-watch box shows NO hint (Pascal passes an empty string)', () => {
