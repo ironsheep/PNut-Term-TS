@@ -518,6 +518,7 @@ Scripts and CI can rely on these:
 | `1` | Port error — enumeration failed, the requested device was not found, or the device stopped responding during the run |
 | `2` | Usage error — bad command line; nothing was run |
 | `3` | Download failed |
+| `4` | Fatal DEBUG display error in the P2 program — a display name that is unusable or duplicated, which leaves its updates unroutable. See [Naming a display](#naming-a-display) |
 | `124` | Timed out (`--timeout`) |
 | `125` | The log may be incomplete — the shutdown flush ran long, or output was lost while writing |
 
@@ -537,6 +538,16 @@ automatically and is almost always right.
 **Downloads fail or never finish** — the adapter may not sustain the default 2 Mbps
 download rate, so the P2 never locks on to the data. Lower it with `--downloadbaud 115200`
 or the Download Baud Rate preference.
+
+**A download reports the image as corrupted or unverified** — when a download completes, the
+P2 sends back a one-byte verdict on what it actually received, and that verdict is now
+checked. `checksum verification FAILED (! received) - download corrupted` means the P2 got
+the image but it did not match what was sent. `checksum verification did not complete
+(no . or ! received) - download unverified` means no verdict arrived at all. Lowering the
+download baud does not address either one directly, though a marginal adapter or cable can
+produce both — retry once, and suspect the cable, the adapter or the connection if it
+repeats. Before v1.0.6 these cases were reported as a successful download, so a setup that
+appeared to work may start reporting a failure that was always happening.
 
 **A rate above 2000000 warns** that the behavior is unmeasured. It is a notice, not a
 refusal — sustained streaming is verified to 2 Mbps, and above that the stream may arrive
