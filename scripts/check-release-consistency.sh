@@ -211,6 +211,26 @@ else
   note "scripts/claude/check_doc_counts.sh not present — counts UNCHECKED"
 fi
 
+# Handoff feeds are point-in-time snapshots, so BOTH the doc-drift instrument and
+# the stamp check above deliberately exclude them — a snapshot may legitimately
+# carry the version it was taken at. That exclusion is why two feeds sat stale
+# from v1.0.0 through v1.0.6 with nothing reporting it: "correctly frozen" and
+# "silently rotted" were the same string in the same place. This half compares a
+# feed to the canonical document the feed itself names.
+if [[ -r scripts/claude/check_feed_freshness.sh ]]; then
+  fo="$(bash scripts/claude/check_feed_freshness.sh 2>&1)"
+  if [[ -z "$fo" ]]; then
+    note "feed instrument produced NO OUTPUT — treat as UNCHECKED, not as clean"
+  elif ! printf '%s\n' "$fo" | grep -q '^== FEED FRESHNESS'; then
+    note "feed output lacked the expected '== FEED FRESHNESS' section — UNCHECKED, not clean"
+  else
+    note "handoff feeds: $(printf '%s\n' "$fo" | sed -n 's/^  \([0-9]* feed(s):.*\)$/\1/p')"
+    printf '%s\n' "$fo" | grep -E '^  (STALE|UNDECLARED)' | sed 's/^  /    /'
+  fi
+else
+  note "scripts/claude/check_feed_freshness.sh not present — feeds UNCHECKED"
+fi
+
 echo
 if [[ $fail -ne 0 ]]; then
   echo "❌ RELEASE GATE FAILED — fix the items above before tagging."

@@ -1,5 +1,17 @@
 # Window Auto-Layout Algorithm — FEED
 
+> ## 📤 HANDOFF SNAPSHOT — DERIVED FROM CODE, not a copy of a document
+>
+> The other feeds here are snapshots of a maintained document and are checked
+> against it mechanically. This one has no such document to be re-snapshotted
+> from: it was re-derived by reading `src/utils/windowPlacer.ts`, and it is the
+> code-accurate specification — the narrative `DOCs/WINDOW-PLACEMENT-ALGORITHM.md`
+> carries a stale example that this feed corrects. No diff can check it, so when
+> `windowPlacer.ts` changes this feed must be re-derived from the code by hand.
+>
+> Currency: **v0.10.8** (2026-07-21) — `windowPlacer.ts` has not changed since,
+> so the specification below is still accurate at v1.0.7.
+
 **Purpose:** full specification of the automatic window-placement algorithm PNut-Term-TS uses
 when it opens debug/display windows without an explicit position. Written for the DOCs agent to
 fold into the user manual.

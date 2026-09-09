@@ -11,6 +11,17 @@ The **live source of truth stays in the PNut-Term-TS repo** at the paths below. 
 and the repo disagree, the repo wins. Re-snapshot from source rather than editing these
 copies in place.
 
+That rule is now **mechanically checked**: `scripts/claude/check_feed_freshness.sh` compares
+every feed to the canonical document the feed's own banner names, and reports any that
+differ — in either direction, so it catches both a canonical that moved without a
+re-snapshot and a feed somebody edited in place. It runs in the release gate's advisory
+section. It exists because the other instruments deliberately EXCLUDE this directory (a
+snapshot may legitimately carry the version it was taken at), which meant "correctly frozen"
+and "silently rotted" were indistinguishable — and two feeds sat stale from v1.0.0 through
+v1.0.6 with nothing reporting it. A feed that names no source is itself a finding; a feed
+re-derived from code rather than copied from a document says so in its banner and is
+reported as out of diff scope rather than passing quietly.
+
 ## Contents
 
 ### 1. `SingleStep-Debugger-Interactive-Test-Plan.md`
