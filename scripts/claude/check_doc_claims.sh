@@ -97,6 +97,33 @@ for doc in "${DOCS[@]}"; do
         DOCs/pascal-REF/*)
           printf '%s' "$frag" | grep -qE '^[A-Za-z_][A-Za-z0-9_]*$' && continue ;;
       esac
+      # THE PIPE IS NOT ALWAYS A SEPARATOR. This half treats an inline span
+      # containing ' | ' as one of our pipe-separated UI strings, and that
+      # premise is wrong in three recurring shapes — each of which produced a
+      # standing false positive that a reader had to re-dismiss on every run:
+      #
+      #   shell pipeline      `echo $PATH | grep pnut-term-ts`   (PATH guide)
+      #   BNF alternation     `TRIGGER channel (AUTO | arm fire)` (directive matrix)
+      #   operator expression `(byte_count << 20) | (address & $FFFFF)`
+      #
+      # None is a claim about our output, so none can drift from it. The tests
+      # are structural rather than character-based on purpose: a first attempt
+      # rejected anything with punctuation, which also threw away genuine hover
+      # hints like 'L-Click to break on MAIN instructions (single-step)' — the
+      # exact population this half exists to protect. Validated against all 42
+      # pipe-carrying literals in src/: the real claims survive, these do not.
+      #
+      # 1. a shell pipeline — the fragment begins with a command word
+      printf '%s' "$frag" | grep -qE '^(echo|cat|grep|ls|dir|type|find|findstr|where|which|curl|wget|npm|npx|node|git|awk|sed|sort|head|tail|ps|tr|xargs)\b' && continue
+      # 2. a shell/PASM variable or hex literal — $VAR, %VAR%, $FFFFF (never ${...},
+      #    which is TypeScript interpolation and DOES appear in real UI strings)
+      printf '%s' "$needle" | grep -qE '(^|[^$])\$[A-Za-z_][A-Za-z0-9_]*|%[A-Za-z_][A-Za-z0-9_]*%' && continue
+      # 3. the pipe sits INSIDE a bracket pair — alternation, not separation
+      printf '%s' "$needle" | awk '{d=0; for(i=1;i<=length($0);i++){c=substr($0,i,1);
+             if(c~/[([{]/)d++; else if(c~/[)\]}]/){if(d>0)d--} else if(c=="|"&&d>0)nested=1}}
+             END{exit (nested?1:0)}' || continue
+      # 4. a C/PASM operator expression
+      printf '%s' "$needle" | grep -qE '<<|>>|&&|\|\|' && continue
       if ! grep -qF -- "$frag" "$SRC_STRINGS"; then
         echo "  $doc:$line  no source literal contains: $frag"
       fi
