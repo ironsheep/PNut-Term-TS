@@ -80,16 +80,57 @@ copies in place.
 
 | Feed | Snapshot | Current as of |
 |---|---|---|
-| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-09-07** | **v1.0.6** (plan at v2, incl. Phase D) |
-| 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-09-07** | **v1.0.6** (input surface code-verified) |
-| 2. `User-Guide-FEED.md` | 2026-07-27 | v1.0.0 |
-| 3. `LOGGING-STANDARDS-FEED.md` | 2026-07-27 | v1.0.0 |
-| 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 |
+| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-09-08** | **v1.0.7** (plan at v2, incl. Phase D; PNut column of the two-build run complete, PNut-term-ts column still open) |
+| 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-09-08** | **v1.0.7** (input surface code-verified; carries the hint-bar correction) |
+| 2. `User-Guide-FEED.md` | **2026-09-09** | **v1.0.7** |
+| 3. `LOGGING-STANDARDS-FEED.md` | **2026-09-09** | **v1.0.7** |
+| 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 snapshot — still code-accurate at v1.0.7: `src/utils/windowPlacer.ts` has not changed since |
+
+**Every feed in this table is current as of 2026-09-09.** Feeds 2 and 3 had been stale for
+seven releases; see below for what a manual author must un-learn from the previous copies.
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
 the first snapshot; re-pull if the repo has advanced. **Feeds 2 and 3 carry the content as
 shipped in v1.0.0, the first public release** — their v0.11.12 snapshot was re-stamped at the
 release with no content change.
+
+### What changed in the 2026-09-09 re-snapshot (feeds 2 and 3)
+
+Both feeds had been sitting at their **v1.0.0** snapshot while the repo moved to v1.0.7, and
+neither carried a snapshot banner — which is why the drift was invisible in the directory
+listing. Both now carry one, and both are byte-identical to canonical apart from that banner.
+
+**Three things in the previous copies were not merely incomplete but WRONG**, and a manual
+written from them would have taught each one:
+
+- **The baud option was renamed, and one rate became two (v1.0.3).** The old feed documented
+  a single `--debugbaud` "debug baud" that the user should not normally need to set. There
+  are now two rates, set independently: **`--baud`** carries `debug()` output *and* terminal
+  traffic (one rate, because it is one serial connection), and **`--downloadbaud`** is used
+  only while loading a program into the P2. `--debugbaud` still works as an alias, but it is
+  not the name to teach — the rate was never only about `debug()` output. The download rate
+  is now a user-facing value with its own preference and its own range (9600–2000000), and
+  the guide gained the *lower it if downloads fail* advice that goes with it, which is the
+  single most likely reason a reader will go looking for this section.
+- **Exit code 0 changed meaning (v1.0.4/v1.0.5).** It used to assert "clean exit — all SAVEs
+  and logs flushed", i.e. that shutdown went well. It now asserts that **the captured log is
+  complete** — a promise about the data, not about the teardown. Code 125's description
+  widened to match ("the shutdown drain ran long, **or output was lost while writing**"), and
+  code 1 now also covers a device that stopped responding mid-run. This matters to any reader
+  scripting the tool: the old wording invited treating 0 as "it exited tidily", which is
+  exactly the reading the change was made to kill.
+- **Logging's *System advice* bucket gained an explicit event-vs-mechanism rule (feed 3,
+  2026-08-14).** The bucket is named for the *event*, and that had been read as licence to log
+  every step implementing it: one DTR reset is one narrative line, but the several individual
+  DTR/RTS line transitions that perform it were each being printed, putting a column of bare
+  `DTR: true` / `DTR: false` in front of every ordinary user of a release build. Those
+  transitions — and handle lifecycle, and reopen steps — are **serial-channel diagnostics**,
+  emitted only under `--diag-serial`. Errors stay live regardless. The feed now carries the
+  test for the distinction: *would a reader trying to find out what their run did care about
+  this line, or does it only make sense to someone debugging the transport itself?*
+
+Nothing else in feed 2 changed materially — the *Naming a display* rules, the operating-mode
+material and exit code 4 were already present in the v1.0.0 copy and carry over unchanged.
 
 ### What changed in the 2026-07-27 re-snapshot (feeds 2 and 3)
 
