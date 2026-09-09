@@ -4,7 +4,25 @@
 # postCreateCommand on EVERY container create (pnut-ts compiler + Claude CLI).
 # These now live in cached layers, so a rebuild is cheap and offline.
 #
-FROM mcr.microsoft.com/devcontainers/javascript-node:24-bookworm
+# --- base image: the Node major is PINNED, and pinned to what SHIPS -----------
+# 22, because that is what the project actually builds and releases on. Five
+# places in this repo agree on it -- .nvmrc (22), package.json engines
+# (>=20 <24), @types/node (^22), and NODE_VERSION in BOTH .github/workflows/
+# ci.yml and release.yml (22). This line was the only dissenter: it was created
+# at :24-bookworm in b0bb6d7 (2026-06-22) by taking the then-current tag, and
+# nothing was ever chosen about it.
+#
+# The cost of the drift was a container whose runtime did not reproduce the one
+# that builds the artifacts, announcing itself on every create as an EBADENGINE
+# warning npm prints and nobody acts on. Benign so far only by luck: the native
+# deps (@serialport/bindings-cpp, koffi) ship N-API prebuilds, which are ABI
+# stable across Node majors, so nothing crashed to make the mismatch visible.
+#
+# Do NOT bump this to chase a newer base image. It moves when NODE_VERSION in
+# the workflows moves, and engines/.nvmrc/@types/node move with it -- all five
+# together or none. The Node 24 mentioned in the workflow comments is the GitHub
+# runner's JS-ACTION runtime, a different thing; it is not this.
+FROM mcr.microsoft.com/devcontainers/javascript-node:22-bookworm
 
 # --- git: trust the workspace bind mount -------------------------------------
 # The workspace arrives over a virtiofs bind mount whose uid attribution is
