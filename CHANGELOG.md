@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.0.8 (2026-09-11)
+
+A download that worked is no longer reported as a failure.
+
+v1.0.7 and v1.0.6 could finish a download, start the P2 running, and then write
+`[DOWNLOAD FAILED] ... P2 checksum verification did not complete (no . or ! received)` into
+the log — a verdict on a download that had in fact passed its CRC. Nothing was wrong with
+the download or with the CRC check; the app was reading the answer one beat too early.
+
+The serial port does not live in the window you are looking at. It runs in a process of its
+own, so that a busy display can never stall the driver, and the window keeps a copy of a few
+values that process reports — the CRC verdict among them. That copy was being sent as a
+separate message immediately *after* the reply to "the download is done", and a reply is
+always acted on before the next message is opened. So the download step asked for the CRC
+verdict and got the one from before the download had started: not yet verified. Every time,
+on every download, in the windowed app. The command-line mode was never affected — it holds
+the port itself and reads the real value.
+
+The verdict now travels *with* the reply it belongs to, so the answer to "did the CRC pass"
+is the one from the download that just finished. The same correction reaches the other
+values the window copies: the baud-rate lines in the log that read back the port speed after
+a change were reporting the speed from before it.
+
+Worth saying plainly, because it cuts the other way too: when this message does appear now,
+it means what it says. An unverified image is not announced as a good one.
+
+### Bug Fixes
+
+- A successful download is no longer reported as `P2 checksum verification did not complete`
+  in the windowed app — the CRC verdict is now read after the download that produced it,
+  not before
+- Log lines that report the port's baud rate after a change now show the new rate rather
+  than the previous one
+
 ## v1.0.7 (2026-09-08)
 
 The debugger's hint bar now tells you the P2's clock speed whenever you are not pointing at

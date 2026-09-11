@@ -603,4 +603,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 1.0.7 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 1.0.8 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

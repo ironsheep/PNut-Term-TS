@@ -1267,7 +1267,8 @@ export class UsbSerial extends EventEmitter {
           // would satisfy this wait instantly.
           this._checksumResponseChar = null;
 
-          // Set flag to consume checksum responses (don't forward to mainWindow)
+          // Arm the latch. (This flag gates the latch only — it does not suppress the byte
+          // downstream; the raw chunk is emitted to main either way.)
           this._expectingChecksumResponse = true;
 
           // Wait for response character

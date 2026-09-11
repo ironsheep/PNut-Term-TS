@@ -34,21 +34,41 @@ function makeContextStub(runEnvironment: Record<string, any>): any {
   return { runEnvironment, logger };
 }
 
-function pushState(): void {
-  if (!serial) return;
+/**
+ * Read the state the proxy serves from its cache. Returns undefined mid-teardown.
+ *
+ * This snapshot RIDES THE RESULT MESSAGE (see handleCall) rather than following it as a
+ * separate 'state' post. Ordering is the whole point: main resolves the RPC promise when it
+ * handles 'result', and the awaiting continuation runs as a MICROTASK — before the next port
+ * message is ever delivered. So a trailing 'state' post is always applied one beat too late,
+ * and every synchronous getter on the proxy reads the PRE-call value at exactly the moment a
+ * caller asks for the POST-call one.
+ *
+ * That is not theoretical: it is the defect this comment was written for. Downloader.download()
+ * does `await port.download(...)` and then immediately `port.getChecksumStatus()`. On the GUI
+ * path (UsbSerialProxy) it therefore read the snapshot taken back during deviceIsPropellerV2 —
+ * verified:false, always — and reported "P2 checksum verification did not complete (no . or !
+ * received)" on downloads the P2 had in fact verified and was already running. Headless never
+ * showed it, because headless holds a real UsbSerial and its getter is the live field.
+ */
+function snapshotState(): any | undefined {
+  if (!serial) return undefined;
   try {
-    post({
-      kind: 'state',
-      state: {
-        currentBaudRate: serial.getCurrentBaudRate(),
-        downloadBaudRate: serial.getDownloadBaudRate(),
-        checksumStatus: serial.getChecksumStatus(),
-        isDownloading: serial.isDownloading()
-      }
-    });
+    return {
+      currentBaudRate: serial.getCurrentBaudRate(),
+      downloadBaudRate: serial.getDownloadBaudRate(),
+      checksumStatus: serial.getChecksumStatus(),
+      isDownloading: serial.isDownloading()
+    };
   } catch {
     /* getters unavailable mid-teardown — ignore */
+    return undefined;
   }
+}
+
+function pushState(): void {
+  const state = snapshotState();
+  if (state) post({ kind: 'state', state });
 }
 
 /**
@@ -145,12 +165,16 @@ async function handleCall(msg: any): Promise<void> {
     const fn = (serial as any)[msg.method];
     if (typeof fn !== 'function') throw new Error(`serial host: unknown method '${msg.method}'`);
     const value = await fn.apply(serial, msg.args || []);
-    if (msg.id) post({ kind: 'result', id: msg.id, ok: true, value });
+    // State rides WITH the result — see snapshotState(). A separate post would land after the
+    // caller's await has already read the cache.
+    if (msg.id) post({ kind: 'result', id: msg.id, ok: true, value, state: snapshotState() });
+    else pushState(); // fire-and-forget call: no result to ride on
   } catch (e: any) {
     console.error(`[HOST] call ${msg.method} id=${msg.id} REJECTED: ${e?.message ?? e}`);
-    if (msg.id) post({ kind: 'result', id: msg.id, ok: false, error: e?.message ?? String(e) });
-  } finally {
-    pushState();
+    // A rejected call still moved state (a download that threw partway still cleared
+    // isDownloading), and the caller's catch block reads the same getters.
+    if (msg.id) post({ kind: 'result', id: msg.id, ok: false, error: e?.message ?? String(e), state: snapshotState() });
+    else pushState();
   }
 }
 
@@ -159,8 +183,8 @@ port.on('message', (event: any) => {
   const msg = event && Object.prototype.hasOwnProperty.call(event, 'data') ? event.data : event;
   if (!msg) return;
   if (msg.kind === 'init') handleInit(msg);
-  // handleCall() catches its own call failures, but its `finally { pushState() }` can
-  // still throw — and a rejection here has no awaiter, so it would take the whole
+  // handleCall() catches its own call failures, but posting the reply can still throw
+  // (a torn-down port) — and a rejection here has no awaiter, so it would take the whole
   // serial host process down with it. Report and keep serving.
   else if (msg.kind === 'call')
     handleCall(msg).catch((e: any) => {

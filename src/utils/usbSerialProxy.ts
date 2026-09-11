@@ -155,6 +155,12 @@ export class UsbSerialProxy extends EventEmitter {
         this.hostReady = true;
         break;
       case 'result': {
+        // Apply the piggybacked state BEFORE settling. The awaiting continuation runs as a
+        // microtask off this resolve — ahead of every later port message — so a caller that
+        // does `await port.download(); port.getChecksumStatus()` must see the post-call
+        // snapshot here or it will never see it in time. See snapshotState() in the host for
+        // the defect this ordering fixes (a verified download reported as unverified).
+        if (msg.state) Object.assign(this.cached, msg.state);
         const p = this.pending.get(msg.id);
         if (p) {
           this.pending.delete(msg.id);
