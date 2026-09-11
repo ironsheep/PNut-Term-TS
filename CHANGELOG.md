@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.0.9 (2026-09-11)
+
+When a download fails, the log now says why.
+
+The P2 answers a download with a single character — `.` for a good CRC, `!` for a corrupt
+image — and the app has always written that answer down. It just wrote it somewhere nobody
+could read. The three lines carrying the verdict were behind a developer switch that is off
+by default and that nothing in the app, and no command-line flag, can turn on. So a log
+could report a failed download and give no reason at all: whether the CRC came back bad,
+whether the P2 never answered, or whether the answer was never read is the first thing you
+need in order to know where to look, and it was the one thing missing.
+
+The verdict is now always written, in every build, with no flags. A download you never
+think about gains one line; a download that goes wrong gains the line that explains it.
+The step-by-step handshake detail that used to sit alongside it stays behind
+`--diag-serial`, where it belongs — this adds the answer, not the noise.
+
+### Bug Fixes
+
+- The P2 checksum verdict — CRC passed, CRC failed, or no answer from the P2 — is now
+  written to the log in every build, instead of being unreachable behind a switch no flag
+  could set
+
 ## v1.0.8 (2026-09-11)
 
 A download that worked is no longer reported as a failure.

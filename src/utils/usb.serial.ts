@@ -1252,12 +1252,6 @@ export class UsbSerial extends EventEmitter {
           // After sending '?' terminator, P2 WILL respond with:
           // '.' = checksum valid, program started
           // '!' = checksum invalid
-          this.logMessage(`* Waiting for P2 checksum verification response (. or !)...`);
-
-          // Wait for the actual response character
-          // P2 will ALWAYS respond, so we wait for the character with a safety timeout
-          const startTime = Date.now();
-          const timeout = 1000; // 1 second safety timeout - should NEVER be hit unless protocol is out of sync
 
           // Clear buffer before waiting for response
           this._p2DetectionBuffer = '';
@@ -1271,50 +1265,7 @@ export class UsbSerial extends EventEmitter {
           // downstream; the raw chunk is emitted to main either way.)
           this._expectingChecksumResponse = true;
 
-          // Wait for response character
-          while (true) {
-            // Check for response characters
-            if (this._checksumResponseChar !== null) {
-              const responseTime = Date.now() - startTime;
-
-              if (this._checksumResponseChar === '.') {
-                this._downloadChecksumGood = true;
-                this._checksumVerified = true;
-                this.logMessage(`* P2 checksum verification: SUCCESS - '.' received after ${responseTime}ms`);
-                this.logMessage(`* Download completed successfully with verified checksum`);
-              } else if (this._checksumResponseChar === '!') {
-                this._downloadChecksumGood = false;
-                this._checksumVerified = true;
-                this.logMessage(`* P2 checksum verification: FAILED - '!' received after ${responseTime}ms`);
-                this.logMessage(`* Download failed - checksum invalid, binary may be corrupted`);
-              }
-
-              // Clear flag after processing checksum response
-              this._expectingChecksumResponse = false;
-              break;
-            }
-
-            // Safety timeout check - this should NEVER happen
-            if (Date.now() - startTime > timeout) {
-              this._checksumVerified = false;
-              this.logMessage(`* CRITICAL ERROR: P2 checksum response timeout after ${timeout}ms`);
-              // Report the line buffer only as context. It is NOT what this loop waits on
-              // any more — the wait is on the byte-wise latch in checkForP2Response() —
-              // so an empty buffer here no longer implies the reply never arrived.
-              this.logMessage(`* Prop_Ver line buffer (context only): '${this._p2DetectionBuffer}'`);
-              this.logMessage(`* Protocol out of sync - P2 ALWAYS responds to '?' with '.' or '!'`);
-              this.logMessage(`* Something is seriously wrong with the serial communication`);
-
-              // Clear flag on timeout too
-              this._expectingChecksumResponse = false;
-              break;
-            }
-
-            // Small yield to let data arrive
-            await waitMSec(1);
-          }
-
-          this._downloadResponse = this._downloadChecksumGood ? '.' : '!';
+          await this.awaitChecksumVerdict();
         }
       }
     } catch (error) {
@@ -1324,6 +1275,77 @@ export class UsbSerial extends EventEmitter {
       this._isDownloading = false;
       this.logMessage(`* download() - Download complete, isolation mode disabled`);
     }
+  }
+
+
+  /**
+   * Wait for the P2's answer to the '?' terminator and record the verdict.
+   *
+   * Extracted from download() so the verdict — and the LOG LINES that carry it — can be
+   * exercised without an open port. The caller arms the latch (clears _checksumResponseChar,
+   * sets _expectingChecksumResponse) before calling; this method only waits and decides.
+   *
+   * The three verdict lines below are ALWAYS LIVE on purpose. See the comments at each.
+   */
+  private async awaitChecksumVerdict(): Promise<void> {
+    this.logChannelDiag(`* Waiting for P2 checksum verification response (. or !)...`);
+
+    // P2 will ALWAYS respond, so we wait for the character with a safety timeout.
+    const startTime = Date.now();
+    const timeout = 1000; // safety timeout - should NEVER be hit unless protocol is out of sync
+
+    while (true) {
+      if (this._checksumResponseChar !== null) {
+        const responseTime = Date.now() - startTime;
+
+        if (this._checksumResponseChar === '.') {
+          this._downloadChecksumGood = true;
+          this._checksumVerified = true;
+          // ALWAYS-LIVE: this IS the download's pass/fail result, which logSystemEvent()'s own
+          // contract puts in the always-live bucket ("download start/success/fail, the P2
+          // handshake result"). It sat behind logMessage()'s `loggingEnabled` gate — a field
+          // initialized false in context.ts and assigned NOWHERE, so no flag reaches it and
+          // this line was dead in every shipped build. That is why a v1.0.7 log could say
+          // [DOWNLOAD FAILED] and carry no reason: the one line that distinguishes "CRC
+          // failed" from "CRC timed out" from "verdict never read" was unreachable.
+          // [LOGGING-STANDARDS]
+          this.logSystemEvent(`* P2 checksum verification: SUCCESS - '.' received after ${responseTime}ms`);
+          // Redundant with the caller's own success line ([DOWNLOAD SUCCESS] headed,
+          // "Download completed successfully" headless) — keep it off the normal log.
+          this.logChannelDiag(`* Download completed successfully with verified checksum`);
+        } else if (this._checksumResponseChar === '!') {
+          this._downloadChecksumGood = false;
+          this._checksumVerified = true;
+          this.logSystemEvent(`* P2 checksum verification: FAILED - '!' received after ${responseTime}ms`);
+          this.logChannelDiag(`* Download failed - checksum invalid, binary may be corrupted`);
+        }
+
+        this._expectingChecksumResponse = false;
+        break;
+      }
+
+      // Safety timeout - this should NEVER happen.
+      if (Date.now() - startTime > timeout) {
+        this._checksumVerified = false;
+        // ALWAYS-LIVE for the same reason as the verdicts above: a download that could not be
+        // verified is a download failure, and the log must say so.
+        this.logSystemEvent(`* CRITICAL ERROR: P2 checksum response timeout after ${timeout}ms`);
+        // Report the line buffer only as context. It is NOT what this loop waits on any more —
+        // the wait is on the byte-wise latch in checkForP2Response() — so an empty buffer here
+        // no longer implies the reply never arrived.
+        this.logChannelDiag(`* Prop_Ver line buffer (context only): '${this._p2DetectionBuffer}'`);
+        this.logChannelDiag(`* Protocol out of sync - P2 ALWAYS responds to '?' with '.' or '!'`);
+        this.logChannelDiag(`* Something is seriously wrong with the serial communication`);
+
+        this._expectingChecksumResponse = false;
+        break;
+      }
+
+      // Small yield to let data arrive.
+      await waitMSec(1);
+    }
+
+    this._downloadResponse = this._downloadChecksumGood ? '.' : '!';
   }
 
   public async write(value: string | Buffer): Promise<void> {
@@ -1472,7 +1494,7 @@ export class UsbSerial extends EventEmitter {
       }
       if (idx < data.length && (data[idx] === 0x2e /* '.' */ || data[idx] === 0x21) /* '!' */) {
         this._checksumResponseChar = String.fromCharCode(data[idx]);
-        this.logMessage(`  -- Checksum response detected: '${this._checksumResponseChar}'`);
+        this.logChannelDiag(`  -- Checksum response detected: '${this._checksumResponseChar}'`);
       }
     }
 

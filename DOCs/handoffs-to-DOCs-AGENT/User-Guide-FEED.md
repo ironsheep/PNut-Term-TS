@@ -3,7 +3,7 @@
 > ## 📤 HANDOFF SNAPSHOT — not the maintained copy
 >
 > The canonical document is **`DOCs/USER-GUIDE.md`**. Re-snapshotted **2026-09-11** at
-> **v1.0.8** — a version-stamp refresh only; the body is unchanged from the **2026-09-09**
+> **v1.0.9** — a version-stamp refresh only; the body is unchanged from the **2026-09-09**
 > re-snapshot at v1.0.7, which is the substantive one. That copy replaced a v1.0.0 snapshot
 > seven releases behind, and the two changes a manual author must not miss both date from
 > it: the **baud rename and split** (`--debugbaud` no longer exists; there are now two
@@ -13,7 +13,7 @@
 >
 > Edit the canonical copy, then re-snapshot. Never edit both.
 
-*Version 1.0.8*
+*Version 1.0.9*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
