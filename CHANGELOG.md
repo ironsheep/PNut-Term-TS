@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.10 (2026-09-23)
+
+A good RAM download no longer fails its checksum check at random.
+
+### Bug Fixes
+
+- **RAM download (`-r`)**: a successful download no longer intermittently reports a P2
+  checksum timeout and aborts the session. Seen in about one download in seven on macOS
+- **Console output**: a checksum timeout now reports how many bytes arrived after the `?`
+  and how the first of them began, so a real non-answer can be told apart from garbled data
+
 ## v1.0.9 (2026-09-11)
 
 When a download fails, the log now says why.

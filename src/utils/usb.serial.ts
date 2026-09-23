@@ -98,6 +98,13 @@ export class UsbSerial extends EventEmitter {
   // MUST NOT be derived from _p2DetectionBuffer: that buffer is line-oriented and is
   // truncated at the last newline on every chunk, which silently destroys this byte.
   private _checksumResponseChar: string | null = null;
+  // When the latch was armed (just before the '?' is written), when it latched, and what
+  // arrived meanwhile. They make the verdict line honest about timing, and a timeout able
+  // to say whether the P2 sent nothing at all or sent bytes that were not a reply.
+  private _checksumArmedAt: number = 0;
+  private _checksumLatchedAt: number = 0;
+  private _checksumBytesSinceArm: number = 0;
+  private _checksumFirstChunkHead: string = '';
   private checkedForP2: boolean = false;
   private _isDownloading: boolean = false; // Track download state
   private _expectingP2Response: boolean = false; // Flag to track when we're expecting P2 ID responses that should be consumed
@@ -1246,25 +1253,35 @@ export class UsbSerial extends EventEmitter {
             needsP2ChecksumVerify ? 'checksum validation mode' : 'immediate execution'
           })`
         );
+
+        if (needsP2ChecksumVerify) {
+          // After the '?' terminator the P2 WILL respond with:
+          // '.' = checksum valid, program started
+          // '!' = checksum invalid
+          //
+          // ARM THE LATCH BEFORE THE '?' GOES OUT — never after. write() resolves only once
+          // drain() completes, and on node-serialport (macOS/Linux) the drain callback and
+          // the RX 'data' event complete independently: nothing orders "the '?' is confirmed
+          // sent" before "the P2's reply was read". The P2 answers at once, so its reply
+          // races the drain callback. Armed after write(), a reply that won the race was read
+          // while the latch was still disarmed — it went to the log, not the latch, and the
+          // wait then timed out 1000 ms later on a good download (~14% of downloads on a
+          // macOS bench against v1.0.9). The P2 loader transmits nothing while it receives
+          // Base64, so arming early cannot mistake anything else for the reply.
+          this._p2DetectionBuffer = '';
+          // Clear BEFORE arming, or a leftover from a prior download would satisfy this wait
+          // instantly. (This flag gates the latch only — it does not suppress the byte
+          // downstream; the raw chunk is emitted to main either way.)
+          this._checksumResponseChar = null;
+          this._checksumBytesSinceArm = 0;
+          this._checksumFirstChunkHead = '';
+          this._checksumArmedAt = Date.now();
+          this._expectingChecksumResponse = true;
+        }
+
         await this.write(terminator); // Terminator only, no > or CR needed
 
         if (needsP2ChecksumVerify) {
-          // After sending '?' terminator, P2 WILL respond with:
-          // '.' = checksum valid, program started
-          // '!' = checksum invalid
-
-          // Clear buffer before waiting for response
-          this._p2DetectionBuffer = '';
-
-          // Arm the byte-wise latch in checkForP2Response() and clear any stale reply.
-          // Order matters: clear BEFORE arming, or a leftover from a prior download
-          // would satisfy this wait instantly.
-          this._checksumResponseChar = null;
-
-          // Arm the latch. (This flag gates the latch only — it does not suppress the byte
-          // downstream; the raw chunk is emitted to main either way.)
-          this._expectingChecksumResponse = true;
-
           await this.awaitChecksumVerdict();
         }
       }
@@ -1296,7 +1313,15 @@ export class UsbSerial extends EventEmitter {
 
     while (true) {
       if (this._checksumResponseChar !== null) {
-        const responseTime = Date.now() - startTime;
+        // Measured from arming (just before the '?' was written) to the moment the latch
+        // caught the reply. The reply may already be latched before this wait begins,
+        // because the P2 can answer before drain() completes, so the wait's own start
+        // time would understate it. Direct callers that set the latch without arming fall
+        // back to the wait's clock.
+        const responseTime =
+          this._checksumArmedAt > 0 && this._checksumLatchedAt >= this._checksumArmedAt
+            ? this._checksumLatchedAt - this._checksumArmedAt
+            : Date.now() - startTime;
 
         if (this._checksumResponseChar === '.') {
           this._downloadChecksumGood = true;
@@ -1329,7 +1354,15 @@ export class UsbSerial extends EventEmitter {
         this._checksumVerified = false;
         // ALWAYS-LIVE for the same reason as the verdicts above: a download that could not be
         // verified is a download failure, and the log must say so.
-        this.logSystemEvent(`* CRITICAL ERROR: P2 checksum response timeout after ${timeout}ms`);
+        // Say WHICH timeout. "Nothing arrived" (the P2 never answered, or the link died) and
+        // "bytes arrived that were not a reply" (the latch saw something else first) have
+        // different causes, and the always-live line is the only one a stock build keeps.
+        const arrived =
+          this._checksumBytesSinceArm === 0
+            ? `0 bytes received since the '?' was sent`
+            : `${this._checksumBytesSinceArm} bytes received since the '?' was sent; ` +
+              `first chunk began ${this._checksumFirstChunkHead}`;
+        this.logSystemEvent(`* CRITICAL ERROR: P2 checksum response timeout after ${timeout}ms — ${arrived}`);
         // Report the line buffer only as context. It is NOT what this loop waits on any more —
         // the wait is on the byte-wise latch in checkForP2Response() — so an empty buffer here
         // no longer implies the reply never arrived.
@@ -1485,6 +1518,12 @@ export class UsbSerial extends EventEmitter {
     // leading whitespace, then test the first real byte. Latched — the first reply
     // after arming wins, so app output containing '.' cannot overwrite it.
     if (this._expectingChecksumResponse && this._checksumResponseChar === null) {
+      if (this._checksumBytesSinceArm === 0 && data.length > 0) {
+        this._checksumFirstChunkHead = Array.from(data.subarray(0, 8))
+          .map((b) => b.toString(16).toUpperCase().padStart(2, '0'))
+          .join(' ');
+      }
+      this._checksumBytesSinceArm += data.length;
       let idx = 0;
       while (
         idx < data.length &&
@@ -1494,6 +1533,7 @@ export class UsbSerial extends EventEmitter {
       }
       if (idx < data.length && (data[idx] === 0x2e /* '.' */ || data[idx] === 0x21) /* '!' */) {
         this._checksumResponseChar = String.fromCharCode(data[idx]);
+        this._checksumLatchedAt = Date.now();
         this.logChannelDiag(`  -- Checksum response detected: '${this._checksumResponseChar}'`);
       }
     }
