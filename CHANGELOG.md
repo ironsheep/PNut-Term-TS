@@ -2,258 +2,156 @@
 
 ## v1.0.10 (2026-09-23)
 
-A good RAM download no longer fails its checksum check at random.
-
-### Bug Fixes
-
-- **RAM download (`-r`)**: a successful download no longer intermittently reports a P2
-  checksum timeout and aborts the session. Seen in about one download in seven on macOS
-- **Console output**: a checksum timeout now reports how many bytes arrived after the `?`
-  and how the first of them began, so a real non-answer can be told apart from garbled data
-
-## v1.0.9 (2026-09-11)
-
-When a download fails, the log now says why.
-
-The P2 answers a download with a single character — `.` for a good CRC, `!` for a corrupt
-image — and the app has always written that answer down. It just wrote it somewhere nobody
-could read. The three lines carrying the verdict were behind a developer switch that is off
-by default and that nothing in the app, and no command-line flag, can turn on. So a log
-could report a failed download and give no reason at all: whether the CRC came back bad,
-whether the P2 never answered, or whether the answer was never read is the first thing you
-need in order to know where to look, and it was the one thing missing.
-
-The verdict is now always written, in every build, with no flags. A download you never
-think about gains one line; a download that goes wrong gains the line that explains it.
-The step-by-step handshake detail that used to sit alongside it stays behind
-`--diag-serial`, where it belongs — this adds the answer, not the noise.
-
-### Bug Fixes
-
-- The P2 checksum verdict — CRC passed, CRC failed, or no answer from the P2 — is now
-  written to the log in every build, instead of being unreachable behind a switch no flag
-  could set
-
-## v1.0.8 (2026-09-11)
-
-A download that worked is no longer reported as a failure.
-
-v1.0.7 and v1.0.6 could finish a download, start the P2 running, and then write
-`[DOWNLOAD FAILED] ... P2 checksum verification did not complete (no . or ! received)` into
-the log — a verdict on a download that had in fact passed its CRC. Nothing was wrong with
-the download or with the CRC check; the app was reading the answer one beat too early.
-
-The serial port does not live in the window you are looking at. It runs in a process of its
-own, so that a busy display can never stall the driver, and the window keeps a copy of a few
-values that process reports — the CRC verdict among them. That copy was being sent as a
-separate message immediately *after* the reply to "the download is done", and a reply is
-always acted on before the next message is opened. So the download step asked for the CRC
-verdict and got the one from before the download had started: not yet verified. Every time,
-on every download, in the windowed app. The command-line mode was never affected — it holds
-the port itself and reads the real value.
-
-The verdict now travels *with* the reply it belongs to, so the answer to "did the CRC pass"
-is the one from the download that just finished. The same correction reaches the other
-values the window copies: the baud-rate lines in the log that read back the port speed after
-a change were reporting the speed from before it.
-
-Worth saying plainly, because it cuts the other way too: when this message does appear now,
-it means what it says. An unverified image is not announced as a good one.
-
-### Bug Fixes
-
-- A successful download is no longer reported as `P2 checksum verification did not complete`
-  in the windowed app — the CRC verdict is now read after the download that produced it,
-  not before
-- Log lines that report the port's baud rate after a change now show the new rate rather
-  than the previous one
-
-## v1.0.7 (2026-09-08)
-
-The debugger's hint bar now tells you the P2's clock speed whenever you are not pointing at
-anything.
-
-Move the mouse off the debugger window — or open it and don't touch it yet — and the strip
-along the bottom reads `Clock frequency is 200,000,000 Hz` instead of going blank. It is the
-clock the P2 actually reported, which is worth having on screen: it is the number that
-settles whether a program is running at the speed you think you compiled. Point at any
-region and that region's hint replaces it, exactly as before.
-
-### Bug Fixes
-
-- The debugger's hint bar shows the reported clock frequency while the pointer is away from
-  the window, and from the moment the window opens — it previously went blank
-
-## v1.0.6 (2026-08-29)
-
-The download's CRC check now actually runs, and the log says so the moment it passes.
-
-The P2 answers a download with a single character — `.` for a good CRC, `!` for a corrupt
-one — and then immediately starts running your code, so that character almost always
-arrives glued to the front of the program's first DEBUG output. It was being read out of a
-buffer that keeps only the text after the last line break, which threw the answer away.
-The download then waited a full second for a reply it had already received, gave up, and
-carried on as though nothing had happened.
-
-Two things came of that. `Download completed successfully` landed in the log a second late,
-behind whatever the P2 had printed in the meantime — the report that started this. And
-because the reply was never seen, the CRC was never checked, on the runs where it mattered
-most.
-
-### Bug Fixes
-
-- The P2's CRC reply is read directly from the received bytes, so it survives arriving
-  alongside program output — the CRC is verified again, and the download finishes about a
-  second sooner
-- `Download completed successfully` is written when the CRC passes, ahead of the program
-  output rather than buried in it
-- A download whose CRC could not be verified reports failure instead of success, and says
-  whether the image was corrupt or simply never confirmed
-- The `[DOWNLOAD TO ...]` line naming the file, its size and its timestamp now appears at
-  the top of the new log — it was being discarded while the previous log was closing
-
-## v1.0.5 (2026-08-24)
-
-Headless runs report their own exit status, and say plainly when a log is incomplete.
+A RAM download that passed its CRC no longer fails its checksum check at random.
 
 ### Improvements
 
-- **Console output**: an incomplete log is reported on the console, written into the log
-  file itself, and carried in a non-zero exit status
-- **Control lines**: closing the app during a DTR or RTS reset no longer reports a
-  control-line failure
+- **Console output**: a checksum timeout reports how many bytes arrived after the `?` and
+  how the first chunk began, telling no answer apart from garbled data
 
 ### Bug Fixes
 
-- A `--timeout` expiring, Ctrl-C, or an end marker arriving during a download now reports
-  that run's own exit status rather than a port error
-- Headless runs stop when the serial device stops responding, instead of waiting for an end
-  marker that can no longer arrive
-- `--headless --timeout` with a port that cannot be opened exits immediately rather than
-  waiting out the full timeout
+- **RAM download (`-r`)**: a download that passed its CRC no longer intermittently fails
+  with `P2 checksum response timeout`. Seen on macOS; FLASH downloads were unaffected
+
+## v1.0.9 (2026-09-11)
+
+A failed RAM download's log says why it failed.
+
+### Bug Fixes
+
+- **Log file**: every RAM download records the P2's checksum verdict — CRC passed, CRC
+  failed, or no answer — in every build, without `--diag-serial`
+
+## v1.0.8 (2026-09-11)
+
+A RAM download that passed its CRC is no longer reported as failed.
+
+### Bug Fixes
+
+- **RAM download (windowed)**: a download that passed its CRC no longer fails with
+  `P2 checksum verification did not complete`. Affected v1.0.6 and v1.0.7; headless runs
+  were unaffected
+- **Log file**: in the windowed app, lines reporting the port's baud rate after a change
+  show the new rate, not the previous one
+
+## v1.0.7 (2026-09-08)
+
+The debugger's hint bar shows the P2's clock frequency when the pointer is away.
+
+### Bug Fixes
+
+- **Debugger hint bar**: shows `Clock frequency is N Hz`, the P2's reported clock, whenever
+  the pointer is off the window, from the moment it opens
+
+## v1.0.6 (2026-08-29)
+
+RAM downloads check the P2's CRC reply, and the log reports the result as it arrives.
+
+### Bug Fixes
+
+- **RAM download (`-r`)**: the P2's CRC reply is caught even when program output arrives
+  with it, so the CRC is checked and the download ends a second sooner
+- **RAM download (`-r`)**: a download whose CRC cannot be verified fails, and says whether
+  the image was corrupt or never confirmed
+- **Log file**: `Download completed successfully` is written the moment the CRC passes,
+  ahead of the program's first output
+- **Log file**: the `[DOWNLOAD TO ...]` line naming the file, its size and its timestamp
+  appears at the top of the new log
+
+## v1.0.5 (2026-08-24)
+
+Headless runs exit with the status they decided, and flag a log that is incomplete.
+
+### Improvements
+
+- **Console output**: a headless run that lost captured data says so, stamps
+  `*** THIS LOG IS INCOMPLETE ***` into the log file, and exits non-zero
+
+### Bug Fixes
+
+- **Headless download**: a `--timeout` (exit `124`), Ctrl-C or end marker (exit `0`)
+  arriving mid-download no longer ends in `unexpected failure` and exit `1`
+- `--end-marker`: a serial device that stops responding ends the run with exit `1`
+  instead of waiting forever for the marker
+- `--headless --timeout` with a port that cannot be opened exits `1` immediately rather
+  than waiting out the timeout
+- **Control lines**: closing the app during a DTR or RTS reset no longer reports a
+  control-line failure
 
 ## v1.0.4 (2026-08-24)
 
-A run that finished cleanly could still tell your script it had failed.
+A headless run that ended cleanly no longer tells your script it failed.
 
-Headless runs report the right exit status again. A run that ended normally on its end
-marker would print `(exit code: 0)` and then hand the shell a **1** — sometimes. Roughly
-half of otherwise identical runs did it, which is the worst way for a fault like this to
-behave: anything scripted around this tool saw a successful run fail at random, and
-re-running it appeared to fix it. Nothing was actually wrong with the run. The log was
-complete, the download had worked, the P2 had done its job; only the number handed back
-at the very end was wrong, and it was wrong *after* the app had already decided on the
-right one.
+### Improvements
 
-The cause was in shutting down, not in running. While closing the serial port on the way
-out, the app did not wait for the close to finish, so if the port objected — which it does
-now and then, when the P2 is still transmitting at the moment the run ends — the complaint
-arrived with nobody left listening for it. Node treats that as a crash and overrides the
-exit status with a 1, on top of the one already chosen. The close is now waited for, and a
-port that objects on the way out is reported and ignored, which is all it ever deserved.
+- **Console output**: an error while closing the port or log after a run has decided its
+  exit status is reported, and the decided status is kept
 
-The exit status is now protected from this whole class of fault. Two things changed beyond
-the one bad line. If something does go wrong after a run has decided its result, the app
-now says so plainly and **keeps the result it decided** — a stumble while closing a file or
-a port is not a reason to tell you the run failed. And every remaining place that could
-have done the same thing has been found and fixed, including the five that decide the exit
-code in the first place: a shutdown that goes wrong still reports its verdict rather than
-vanishing. A check now runs before every release and refuses to ship this construct again.
+### Bug Fixes
 
-Nothing about how you use the app has changed. If you have scripts that were tolerating
-random failures from this tool — retrying, or ignoring the exit status — they can stop.
+- **Headless exit status**: a run ending on its end marker no longer prints
+  `(exit code: 0)` and then exits `1`. It happened on about half of runs
 
 ## v1.0.3 (2026-08-23)
 
-The two serial speeds this app uses now have honest names, and the one that was fixed at 2 Mbps is yours to change.
+The serial baud gets its own name, and the download baud becomes a setting.
 
-There were always two speeds, and only one of them had a name that said so. One carries the
-DEBUG output your program prints and anything you type at the terminal — a single rate, because
-it is a single serial connection. The other is used only for the moment a program is being
-loaded into the P2. The first was called the debug baud, which described half of what it does
-and read as irrelevant if you were using this as a plain serial terminal — the one case where
-it is the only setting that matters, since there is no downloaded program to take a rate from.
-It is now the **serial baud**: `--baud` on the command line, "Serial Baud Rate" in Preferences.
-`--debugbaud` still works, and will continue to.
+### New Features
 
-The download speed is no longer fixed. It sat at 2 Mbps with no way to change it, which is fine
-on Parallax hardware and a dead end on a USB adapter that cannot hold that rate — the download
-would simply never complete, and there was nothing to try. There is now a **download baud**:
-`--downloadbaud` on the command line, "Download Baud Rate" in Preferences. The P2's loader
-adapts to whatever you send it, anywhere from 9600 to 2000000, so lowering this costs loading
-time and nothing else. A value outside that window is refused with the window named, because
-outside it the chip cannot hear us at all.
+- `--downloadbaud` / **Download Baud Rate** preference: sets the download rate, from 9600
+  to 2000000; values outside that range are refused
 
-You are told when you go above what has been measured. Sustained streaming is verified to
-2 Mbps. Ask for more and the app now says so — not that it will fail, but that nobody has run
-the experiment, so it may carry the stream perfectly or it may drop data. It does not stop you,
-and if you do run faster we would like to hear what you saw.
+### Improvements
 
-Headless runs now honor a program's own DEBUG_BAUD. If your source set a rate other than the
-default, a headless run would read that rate, record it, and then carry on listening at the old
-one — filling the log with garbage that looked like a hardware fault. Windowed runs were always
-correct; headless now matches them.
+- `--baud` / **Serial Baud Rate** preference: the rate for DEBUG output and terminal
+  traffic. `--debugbaud` still works; giving both with different values is refused
+- **Console output**: a serial or download rate above 2 Mbps prints a warning that the rate
+  is unmeasured, and is still used
+
+### Bug Fixes
+
+- **Headless runs**: a program's own `DEBUG_BAUD` is applied to the port, not only
+  recorded. Windowed runs were unaffected
 
 ## v1.0.2 (2026-08-14)
 
-The debug log keeps up with your program, and a release build stops talking about itself.
+The debug log window keeps up with your program, and a release build's console stays quiet.
 
-The debug log window follows the tail again. When a program finished, the log could be
-left parked part-way up, hiding the last lines it printed — and once that happened the
-window stayed there for the rest of the session, since only scrolling back to the bottom
-yourself would resume live mode. The window had been scrolling itself smoothly, and its
-own animation looked exactly like you scrolling up. It now jumps to the tail, and it can
-tell its own scrolling from yours. The per-COG log windows had the same fault and are
-fixed with it.
+### Improvements
 
-Three further log-window faults found alongside it. The scrollback preference now does
-something: it had been read by nothing, while a fixed cap of 1500 lines did the trimming
-regardless of what you set. It is now the setting that decides how far back you can
-scroll, it applies the moment you change it rather than waiting for new output, and it
-survives closing and reopening the viewer — which also means the default is now the 1000
-lines the preference always advertised, rather than the 1500 nobody could change. On the
-way out, quitting the app or ending a batch run could strand everything past the first
-hundred queued lines and close the window without waiting for the rest to appear — the
-log now empties its queue completely and waits for the window to draw it. And reopening
-the log viewer no longer reports that the display fell behind: the replayed history was
-being fed through the live-output path, which discarded most of it and then said so.
+- **Console output**: individual `DTR:` / `RTS:` transitions, port-handle notes and the
+  Windows synchronous-COM note print only under `--diag-serial`; resets and failures still print
 
-Serial line-control detail no longer prints during ordinary runs. A release build was
-writing a bare column of `DTR: true` / `DTR: false` / `RTS: false` and a handle-closing
-note to the console — the individual line transitions that carry out a reset, rather than
-the reset itself. The reset is still announced, once, as it always was; the transitions
-that implement it, and the handle bookkeeping around them, now appear only under
-`--diag-serial`, alongside the rest of the serial-channel troubleshooting detail. A line
-that fails to assert is still reported either way. On Windows, the note that the
-synchronous COM transport is in use has moved there too — it is the normal case and
-nothing to act on, while its *absence* still says so plainly, because downloading cannot
-work without it.
+### Bug Fixes
+
+- **Debug log window**: a finished program no longer leaves the log or per-COG windows
+  parked above their last lines and out of live mode
+- **Scrollback preference**: sets how far back the log viewer scrolls, takes effect at
+  once, and survives reopening the viewer. The default is 1000 lines
+- **Debug log window**: quitting the app or ending a batch run shows every queued line
+  before the window closes
+- **Debug log window**: reopening the viewer replays the full history without reporting
+  that the display fell behind
 
 ## v1.0.1 (2026-08-12)
 
-Single-step debugger input now matches PNut.
+Single-step debugger mouse, wheel, keyboard and hint-bar input matches PNut.
 
-A close reading of PNut's debugger against ours found sixteen places where the mouse,
-wheel, keyboard and hint-bar behavior had drifted — intended behavior that was missed,
-not new capability. The most visible: the mouse wheel over the hub data pane moved
-sixteen rows per notch instead of one, and its Ctrl nudge moved sixteen bytes instead of
-one. Scrolling the disassembly in hub mode now moves the hub viewer with it, as PNut's do
-— they are one address, not two — and scrolling cog space stops at the end instead of
-wrapping around to register zero.
+### Bug Fixes
 
-Clicks reach the regions they always should have: the hub ASCII column, either mouse
-button on BREAK, and a right-click on a hub-mode disassembly line below `$400` is now
-refused rather than setting a breakpoint that cannot be hit. Clicking a REG or LUT heat
-strip places the register you clicked in the middle of the window rather than on its top
-line, and an interrupt vector holding a hub address now follows that address into hub
-space. The hint bar names the event row you are actually pointing at, six regions that
-were silent now describe themselves, and the wheel no longer scrolls when the pointer is
-over the hub heatmap.
-
-Keyboard commands now match PNut, including on non-QWERTY layouts: commands follow the
-character you type rather than the physical key position, and the five control
-combinations PNut answers — Ctrl+C, Ctrl+D, Ctrl+K, Ctrl+L for hub navigation and Ctrl+M
-for repeat — do so here too.
+- **Debugger wheel**: over the hub data pane, one notch moves one row and Ctrl+wheel one
+  byte, not sixteen; over the hub heatmap it does not scroll
+- **Debugger disassembly**: scrolling in hub mode moves the hub viewer with it; scrolling
+  cog space stops at the end instead of wrapping to register zero
+- **Debugger clicks**: the hub ASCII column and both buttons on BREAK respond; right-click
+  on a hub-mode line below `$400` is refused, not an unreachable breakpoint
+- **Debugger navigation**: clicking a REG or LUT heat strip centres the clicked register;
+  an interrupt vector holding a hub address follows it into hub space
+- **Debugger hint bar**: names the event row under the pointer, and six more regions show
+  a hint
+- **Debugger keyboard**: commands follow the typed character, so non-QWERTY layouts work;
+  Ctrl+C, Ctrl+D, Ctrl+K, Ctrl+L and Ctrl+M respond as in PNut
 
 ## v1.0.0 (2026-07-27)
 
