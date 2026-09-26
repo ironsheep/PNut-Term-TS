@@ -2,7 +2,7 @@
 
 ## v1.0.10 (2026-09-23)
 
-A RAM download that passed its CRC no longer fails its checksum check at random.
+RAM downloads no longer fail at random with a checksum timeout.
 
 ### Improvements
 
@@ -11,27 +11,32 @@ A RAM download that passed its CRC no longer fails its checksum check at random.
 
 ### Bug Fixes
 
-- **RAM download (`-r`)**: a download that passed its CRC no longer intermittently fails
-  with `P2 checksum response timeout`. Seen on macOS; FLASH downloads were unaffected
+- **RAM download (`-r`)**: a download whose CRC passed no longer intermittently fails with
+  `P2 checksum response timeout`. Seen on macOS; affected v1.0.6 through v1.0.9
 
 ## v1.0.9 (2026-09-11)
 
-A failed RAM download's log says why it failed.
+The log records the P2's checksum verdict for every download that asks for one.
+
+### Improvements
+
+- `--diag-serial`: includes the checksum handshake detail — the wait, the reply detection,
+  and the context around a timeout
 
 ### Bug Fixes
 
-- **Log file**: every RAM download records the P2's checksum verdict — CRC passed, CRC
-  failed, or no answer — in every build, without `--diag-serial`
+- **Log file**: a download's P2 checksum verdict — CRC passed, CRC failed, or no answer —
+  is written in every build, with no flag needed
 
 ## v1.0.8 (2026-09-11)
 
-A RAM download that passed its CRC is no longer reported as failed.
+In the windowed app, a RAM download reports the CRC result of the download that just ran.
 
 ### Bug Fixes
 
-- **RAM download (windowed)**: a download that passed its CRC no longer fails with
-  `P2 checksum verification did not complete`. Affected v1.0.6 and v1.0.7; headless runs
-  were unaffected
+- **RAM download (windowed)**: a download whose CRC passed no longer fails, every time,
+  with `P2 checksum verification did not complete`. Affected v1.0.6 and v1.0.7; headless
+  was unaffected
 - **Log file**: in the windowed app, lines reporting the port's baud rate after a change
   show the new rate, not the previous one
 
@@ -46,18 +51,25 @@ The debugger's hint bar shows the P2's clock frequency when the pointer is away.
 
 ## v1.0.6 (2026-08-29)
 
-RAM downloads check the P2's CRC reply, and the log reports the result as it arrives.
+RAM downloads verify the P2's CRC reply, and fail when it cannot be verified.
 
 ### Bug Fixes
 
-- **RAM download (`-r`)**: the P2's CRC reply is caught even when program output arrives
-  with it, so the CRC is checked and the download ends a second sooner
-- **RAM download (`-r`)**: a download whose CRC cannot be verified fails, and says whether
-  the image was corrupt or never confirmed
+- **RAM download (`-r`)**: the P2's CRC is verified; a download it rejects or never
+  confirms fails, and says which
+- **RAM download (`-r`)**: the CRC reply is read even when program output follows it at
+  once, so the download ends about a second sooner
+- `-f`: an image that already carries its flash loader is downloaded and CRC-verified like
+  a RAM download
 - **Log file**: `Download completed successfully` is written the moment the CRC passes,
   ahead of the program's first output
 - **Log file**: the `[DOWNLOAD TO ...]` line naming the file, its size and its timestamp
   appears at the top of the new log
+
+### Known Issues
+
+- **RAM download (windowed)**: every download fails with `P2 checksum verification did not
+  complete`, even when its CRC passed. Headless is unaffected. Fixed in v1.0.8
 
 ## v1.0.5 (2026-08-24)
 
