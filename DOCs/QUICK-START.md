@@ -1,5 +1,5 @@
 # PNut-Term-TS Quick Start Guide
-*Version 1.0.10*
+*Version 1.1.0*
 
 ## First Session (2 Minutes)
 

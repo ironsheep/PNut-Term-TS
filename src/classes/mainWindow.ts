@@ -115,6 +115,16 @@ export class MainWindow {
   private downloadMode: 'ram' | 'flash' = 'ram'; // Default to RAM mode
   private activeCogs: Set<number> = new Set();
   private downloader: Downloader | undefined;
+  // What waitForConnectionReady() reads to tell "still connecting" from "will never connect".
+  // The port is not opened at launch — openSerialPort() runs only once the main window has
+  // finished loading — so a budget counted from launch is spent by a slow window load before
+  // the port is even tried (seen on Linux, 2026-09-29). The clock therefore starts at the open
+  // attempt, and a definite failure (open error, no device, several devices) ends the wait
+  // at once, carrying its reason to the user.
+  private serialOpenStartedAt: number | undefined;
+  private serialConnectFailure: string | undefined;
+  private static readonly CONNECT_PRE_OPEN_TIMEOUT_MS = 60000; // window load, before any open attempt
+  private static readonly CONNECT_OPEN_TIMEOUT_MS = 45000; // one attempt: outlasts the proxy's 30 s hello + 2 s open poll
   private echoOffEnabled: boolean = false;
   private recentTransmitBuffer: string[] = [];
   private transmitTimestamp: number = 0;
@@ -1371,7 +1381,9 @@ export class MainWindow {
         // window so a legitimate in-flight save isn't killed by the backstop.
         const forceQuitTimer = setTimeout(() => {
           this.logConsoleMessage(`[SHUTDOWN ${new Date().toISOString()}] Force quit - cleanup timeout exceeded`);
-          app.exit(this.shutdownExitCode);
+          // A hung cleanup is not a clean exit: say so (as the signal backstops do), unless a
+          // more specific failure (e.g. DownloadFailed) is already being reported.
+          app.exit(this.shutdownExitCode === ExitCode.OK ? ExitCode.FlushTimeout : this.shutdownExitCode);
         }, SHUTDOWN_DRAIN_TIMEOUT_MS + 5000);
 
         // STEP 2.5: Drain in-flight precious data (window SAVEs + recording)
@@ -1553,6 +1565,8 @@ export class MainWindow {
   // this is our serial receiver!!
   //
   private async openSerialPort(deviceNode: string) {
+    this.serialOpenStartedAt = Date.now();
+    this.serialConnectFailure = undefined;
     UsbSerial.setCommBaudRate(this._serialBaud);
     this.logMessage(`* openSerialPort() - ${deviceNode}`);
 
@@ -1602,6 +1616,7 @@ export class MainWindow {
       this.logConsoleMessage(`[BAUD RATE] Setting download baud rate to ${this._downloadBaud} (from ${dlSource})`);
     } catch (error) {
       this.logMessage(`ERROR: openSerialPort() - ${deviceNode} failed to open. Error: ${error}`);
+      this.serialConnectFailure = `${deviceNode} failed to open (${error})`;
       // The proxy was assigned BEFORE waitForPortOpen() (it has to be — that's how we call it), so
       // a failed open otherwise leaves _serialPort set. The `!== undefined` block below would then
       // run against a dead port and build the Downloader, making waitForConnectionReady() report
@@ -4099,6 +4114,7 @@ export class MainWindow {
               const availableDevices = await UsbSerial.serialDeviceList(this.context);
 
               if (availableDevices.length === 0) {
+                this.serialConnectFailure = 'no PropPlug device found';
                 this.appendLog(`⚠️ No PropPlug devices found`);
                 this.appendLog(`   • Connect your PropPlug device via USB`);
                 this.appendLog(`   • Use File > Select PropPlug or change default in Preferences`);
@@ -4115,6 +4131,7 @@ export class MainWindow {
                 await this.openSerialPort(devicePath);
               } else {
                 // Multiple devices found
+                this.serialConnectFailure = `${availableDevices.length} PropPlug devices found and none selected (use -p <device>)`;
                 this.appendLog(`⚠️ Multiple PropPlug devices found (${availableDevices.length} devices)`);
                 this.appendLog(`   Available devices:`);
                 availableDevices.forEach((device: any, index: any) => {
@@ -4127,6 +4144,7 @@ export class MainWindow {
                 this.updateStatusBarField('propPlug', `${availableDevices.length} devices found`);
               }
             } catch (error) {
+              this.serialConnectFailure = `scanning for PropPlug devices failed (${error})`;
               this.appendLog(`⚠️ Error scanning for devices: ${error}`);
               this.updateConnectionStatus(false);
               this.updateStatusBarField('propPlug', 'Error scanning');
@@ -6475,19 +6493,33 @@ export class MainWindow {
   }
 
   /**
-   * Resolve true once the serial connection is fully established (port object + downloader both
-   * created), or false after timeoutMs. openSerialPort() is async and fire-and-forget, and it
-   * creates the downloader LAST — so a CLI auto-download must wait for readiness, not a fixed
-   * delay. A fixed delay races the connect, especially on a tight exit→relaunch cycle where the
-   * prior instance's UtilityProcess/port is still releasing and waitForPortOpen runs long.
+   * Resolve undefined once the serial connection is fully established (port object + downloader
+   * both created), or the REASON it will not be. openSerialPort() is async and fire-and-forget,
+   * and it creates the downloader LAST — so a CLI auto-download must wait for readiness, not a
+   * fixed delay. A fixed delay races the connect, especially on a tight exit→relaunch cycle where
+   * the prior instance's UtilityProcess/port is still releasing and waitForPortOpen runs long.
+   *
+   * The open attempt is timed from when it STARTS, not from launch: openSerialPort() waits for
+   * the main window to finish loading, and a slow load must not spend the port's budget.
    */
-  private async waitForConnectionReady(timeoutMs: number): Promise<boolean> {
-    const start = Date.now();
+  private async waitForConnectionReady(): Promise<string | undefined> {
+    const launchedAt = Date.now();
     while (!(this._serialPort && this.downloader)) {
-      if (Date.now() - start >= timeoutMs) return false;
+      if (this.serialConnectFailure !== undefined) return this.serialConnectFailure;
+      const now = Date.now();
+      if (this.serialOpenStartedAt === undefined) {
+        if (now - launchedAt >= MainWindow.CONNECT_PRE_OPEN_TIMEOUT_MS) {
+          // Both the open and the no-device report run from the window's did-finish-load.
+          return `the port was never tried: the main window had not finished loading after ${
+            MainWindow.CONNECT_PRE_OPEN_TIMEOUT_MS / 1000
+          }s`;
+        }
+      } else if (now - this.serialOpenStartedAt >= MainWindow.CONNECT_OPEN_TIMEOUT_MS) {
+        return `${this._deviceNode} did not finish opening within ${MainWindow.CONNECT_OPEN_TIMEOUT_MS / 1000}s`;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    return true;
+    return undefined;
   }
 
   public async downloadFileFromPath(filePath: string, toFlash: boolean): Promise<void> {
@@ -6495,15 +6527,15 @@ export class MainWindow {
     // Gate on the connection being fully ready so we never download against a half-initialized
     // serial port (which intermittently derefs an undefined port mid-download — bug seen on tight
     // relaunch cycles). Abort cleanly on timeout instead of crashing.
-    const ready = await this.waitForConnectionReady(10000);
-    if (!ready) {
+    const notReadyReason = await this.waitForConnectionReady();
+    if (notReadyReason !== undefined) {
       // A connection that never comes up is exactly as fatal as a download that fails: nothing is
       // running on the P2 either way. Report it the same way, on channels the user can actually
       // see. This used to report ONLY through logMessage(), which is gated on
       // runEnvironment.loggingEnabled — a developer switch that defaults false and is never set
       // true anywhere in the codebase — so the whole failure was invisible: no port, no reset, no
       // P2 output, no error, exit 0. That silence is what made this take a hardware cycle to see.
-      const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} — serial connection not ready (timed out after 10s); the port never opened, so nothing was downloaded`;
+      const failureMsg = `[DOWNLOAD FAILED] ${path.basename(filePath)} — serial connection not ready: ${notReadyReason}; nothing was downloaded`;
       this.logMessage(`ERROR: ${failureMsg}`);
       this.context.logger.forceLogMessage(`Tmnl: ${failureMsg}`);
       this.appendLog(`⚠️ ${failureMsg}`);
@@ -6521,7 +6553,7 @@ export class MainWindow {
           type: 'error',
           title: 'Download Failed',
           message: `Cannot download ${path.basename(filePath)}`,
-          detail: 'The serial connection never became ready (10s). Check that the device is plugged in and not in use by another application.',
+          detail: `The serial connection never became ready: ${notReadyReason}.\n\nCheck that the device is plugged in and not in use by another application.`,
           buttons: ['OK']
         });
       }
@@ -6705,7 +6737,11 @@ export class MainWindow {
             this.logConsoleMessage(`[BAUD RATE] Cleared ${garbageCount} garbage bytes from stream`);
           } catch (clearErr: any) {
             this.logConsoleMessage(`[BAUD RATE] Warning: Error clearing garbage: ${clearErr.message}`);
-            // Fall back to the ignore approach if new method fails
+            // Fall back to the ignore approach if new method fails. It cannot show what it drops,
+            // so at least say that it drops.
+            const notice = `[BAUD SWITCH] Ignoring all received data for 25ms after the baud switch (${clearErr.message}); anything the program sent in that window is not logged`;
+            this.context.logger.forceLogMessage(notice);
+            this.debugLoggerWindow?.logSystemMessage(notice);
             port.setIgnoreFrontTraffic(true);
             await new Promise((resolve) => setTimeout(resolve, 25));
             port.setIgnoreFrontTraffic(false);
@@ -7715,13 +7751,22 @@ export class MainWindow {
     // only pendingOps would miss a queued SAVE WINDOW and close the window before it runs — dropping
     // its _WDW file (fig-04, after the desktopCapturer SAVE WINDOW became slow enough to lose the race
     // with DEBUG_END_SESSION shutdown). [shutdown cuts off a queued SAVE WINDOW]
+    //
+    // ONE deadline for the whole drain, not timeoutMs per stage: chain + paint + pending used to
+    // allow ~2×timeoutMs+1 s (21 s), past the 15 s / 16 s backstops that kill the process — so a
+    // slow host could be cut off mid-SAVE by the very guard meant to outlast the drain.
+    const deadline = Date.now() + timeoutMs;
+    const remaining = () => Math.max(0, deadline - Date.now());
     const flushes: Promise<boolean>[] = [];
     for (const key in this.displays) {
       const display = this.displays[key];
       if (display && typeof display.flushPending === 'function') {
+        let chainOk = true;
         const chainDrain =
           typeof display.flushMessageChain === 'function'
-            ? display.flushMessageChain(timeoutMs)
+            ? display.flushMessageChain(remaining()).then((ok: boolean | void) => {
+                chainOk = ok !== false;
+              })
             : Promise.resolve();
         flushes.push(
           chainDrain
@@ -7731,7 +7776,8 @@ export class MainWindow {
             // still in flight and never show the last output. Also flushes window-private queues
             // (BITMAP pendingPixels, SPECTRO columnBatch) via the flushBeforeCapture overrides.
             .then(() => (typeof display.flushRenders === 'function' ? display.flushRenders() : Promise.resolve()))
-            .then(() => display.flushPending(timeoutMs))
+            .then(() => display.flushPending(remaining()))
+            .then((pendingOk: boolean) => pendingOk && chainOk)
             .catch(() => false)
         );
       }
@@ -7761,6 +7807,21 @@ export class MainWindow {
         this.logMessage(`[SHUTDOWN] Recording flush error (non-fatal): ${e}`);
       }
     }
+  }
+
+  /**
+   * An uncaught exception reached electron-main. Same asymmetric rule as the CLI's reportStray():
+   * DURING the run nothing is known about the outcome, so the exit becomes InternalError (it used
+   * to be whatever was set — usually OK, a crash reading as success). Once shutdown has begun the
+   * run's verdict stands: a stumble while tearing down is logged, not allowed to rewrite it. A
+   * more specific failure already decided (DownloadFailed, DisplayError, …) is never overwritten.
+   * Returns the code the process will exit with.
+   */
+  public reportInternalError(): ExitCode {
+    if (!this.isShuttingDown && this.shutdownExitCode === ExitCode.OK) {
+      this.shutdownExitCode = ExitCode.InternalError;
+    }
+    return this.shutdownExitCode;
   }
 
   public async gracefulShutdown(reason: string = 'signal'): Promise<void> {

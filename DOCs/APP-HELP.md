@@ -519,6 +519,7 @@ Scripts and CI can rely on these:
 | `2` | Usage error — bad command line; nothing was run |
 | `3` | Download failed |
 | `4` | Fatal DEBUG display error in the P2 program — a display name that is unusable or duplicated, which leaves its updates unroutable. See [Naming a display](#naming-a-display) |
+| `70` | Internal error — PNut-Term-TS itself failed (the error is printed); the run's outcome is unknown. Please report it |
 | `124` | Timed out (`--timeout`) |
 | `125` | The log may be incomplete — the shutdown flush ran long, or output was lost while writing |
 
@@ -603,4 +604,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 1.0.10 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 1.1.0 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

@@ -2,9 +2,10 @@
 
 > ## 📤 HANDOFF SNAPSHOT — not the maintained copy
 >
-> The canonical document is **`DOCs/USER-GUIDE.md`**. Re-snapshotted **2026-09-23** at
-> **v1.0.10** — a version-stamp refresh only; the body is unchanged from the **2026-09-09**
-> re-snapshot at v1.0.7, which is the substantive one. That copy replaced a v1.0.0 snapshot
+> The canonical document is **`DOCs/USER-GUIDE.md`**. Re-snapshotted **2026-09-29** at
+> **v1.1.0**, whose one content change is a new **exit code `70`** (internal error) in the
+> *Exit codes* table. Otherwise the body is unchanged from the **2026-09-09** re-snapshot
+> at v1.0.7, which is the substantive one. That copy replaced a v1.0.0 snapshot
 > seven releases behind, and the two changes a manual author must not miss both date from
 > it: the **baud rename and split** (`--debugbaud` no longer exists; there are now two
 > independently-set rates) and the **exit-code contract** (0 now asserts the captured log is
@@ -13,7 +14,7 @@
 >
 > Edit the canonical copy, then re-snapshot. Never edit both.
 
-*Version 1.0.10*
+*Version 1.1.0*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -644,6 +645,7 @@ launching script can branch on `$?` identically in both modes.
 | 2 | Bad command line — nothing ran |
 | 3 | Download failed |
 | 4 | Fatal DEBUG display error in the P2 program — an unusable display name (see [Naming a display](#naming-a-display)) or a duplicated one |
+| 70 | Internal error — PNut-Term-TS itself failed (the error is printed), so the run's outcome is unknown. Please report it |
 | 124 | Headless `--timeout` expired |
 | 125 | The log may be incomplete — the shutdown drain ran long, or output was lost while writing |
 

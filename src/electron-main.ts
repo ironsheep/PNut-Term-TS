@@ -286,14 +286,24 @@ app.commandLine.appendSwitch('no-sandbox');
       }
     } catch (error) {
       logger.errorMsg(`Failed to create main window: ${error}`);
-      app.quit();
+      app.exit(ExitCode.InternalError); // no window, so app.quit() would exit 0
+
     }
   }
 
-  // Handle uncaught exceptions
+  // Handle uncaught exceptions. app.quit() alone exits with whatever code was set — usually OK,
+  // so a crash read as success. The window's shutdown path exits with its shutdownExitCode, so
+  // escalate that first; with no window there is no such path, so exit directly.
   process.on('uncaughtException', (error) => {
-    logger.errorMsg(`Uncaught exception: ${error}`);
-    app.quit();
+    logger.errorMsg(`Uncaught exception: ${error instanceof Error ? (error.stack ?? error.message) : error}`);
+    const mainWindow = (global as any).mainWindowInstance;
+    if (mainWindow && typeof mainWindow.reportInternalError === 'function') {
+      const code = mainWindow.reportInternalError();
+      logger.errorMsg(`Exiting with code ${code}${code === ExitCode.InternalError ? ' (internal error)' : ''}`);
+      app.quit();
+    } else {
+      app.exit(ExitCode.InternalError);
+    }
   });
 
   process.on('unhandledRejection', (reason, promise) => {

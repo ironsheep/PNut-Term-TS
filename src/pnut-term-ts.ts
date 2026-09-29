@@ -1338,8 +1338,10 @@ let exitStatusDecided = false;
 // means:
 //
 //   BEFORE the status is decided  →  we crashed mid-run. Nothing is known about the
-//                                    outcome, so report it and fail (PortError, the
-//                                    same code an unexpected run() failure returns).
+//                                    outcome, so report it and fail (InternalError, the
+//                                    same code an unexpected run() failure returns —
+//                                    not PortError, which would send the user to check
+//                                    a cable for a fault in the tool).
 //   AFTER  the status is decided  →  the run finished and already reported its
 //                                    verdict; this is teardown noise. Report it just
 //                                    as loudly, but KEEP the decided code. A stumble
@@ -1354,7 +1356,7 @@ function reportStray(kind: string, error: unknown): void {
   if (exitStatusDecided) {
     console.error(`PNut-Term-TS: run already finished — keeping exit status ${process.exitCode ?? 0}`);
   } else {
-    process.exitCode = ExitCode.PortError;
+    process.exitCode = ExitCode.InternalError;
   }
 }
 
@@ -1365,11 +1367,11 @@ const cliTool = new DebugTerminalInTypeScript();
 cliTool
   .run()
   .then((exitCode: number) => {
-    process.exitCode = Number.isInteger(exitCode) && exitCode >= 0 ? exitCode : ExitCode.PortError;
+    process.exitCode = Number.isInteger(exitCode) && exitCode >= 0 ? exitCode : ExitCode.InternalError;
     exitStatusDecided = true;
   })
   .catch((error: unknown) => {
     console.error(`PNut-Term-TS: unexpected failure: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = ExitCode.PortError;
+    process.exitCode = ExitCode.InternalError;
     exitStatusDecided = true;
   });

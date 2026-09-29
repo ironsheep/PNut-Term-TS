@@ -503,6 +503,11 @@ export class UsbSerial extends EventEmitter {
     }
 
     let garbageBytes = 0;
+    // Kept so the drop can be SHOWN, not just counted: the window cannot tell scrambled
+    // switch bytes from the program's first real output, and only the content can.
+    const kept: Buffer[] = [];
+    let keptBytes = 0;
+    const startedAt = Date.now();
 
     this.logMessage(`[GARBAGE_CLEAR] Discarding ALL data for ${discardMs}ms`);
 
@@ -512,6 +517,11 @@ export class UsbSerial extends EventEmitter {
     // Simple handler: discard everything within the time window
     const garbageHandler = (data: Buffer) => {
       garbageBytes += data.length;
+      if (keptBytes < UsbSerial.GARBAGE_DUMP_MAX_BYTES) {
+        const slice = Buffer.from(data.subarray(0, UsbSerial.GARBAGE_DUMP_MAX_BYTES - keptBytes));
+        kept.push(slice);
+        keptBytes += slice.length;
+      }
       this.logMessage(
         `[GARBAGE_CLEAR] Discarded ${data.length} bytes: ${Array.from(data.slice(0, Math.min(data.length, 20)))
           .map((b) => `$${b.toString(16).padStart(2, '0').toUpperCase()}`)
@@ -536,7 +546,41 @@ export class UsbSerial extends EventEmitter {
       }
     }
 
+    // ALWAYS-LIVE: dropped bytes are lost data, and the only way to judge them is to see them.
+    // (The window is a timer: a slow host overruns it, which is why the actual length is shown.)
+    if (garbageBytes > 0) {
+      for (const line of UsbSerial.describeDiscardedBytes(Buffer.concat(kept), garbageBytes, Date.now() - startedAt)) {
+        this.logSystemEvent(line);
+      }
+    }
+
     return garbageBytes;
+  }
+
+  /** How much of a post-baud-switch discard is reproduced in the log. */
+  private static readonly GARBAGE_DUMP_MAX_BYTES = 256;
+
+  /**
+   * Log lines for bytes discarded after a baud switch: the count, the real window length, then
+   * the bytes as hex and as text (non-printables as '.'), 32 per line, up to GARBAGE_DUMP_MAX_BYTES.
+   */
+  static describeDiscardedBytes(bytes: Buffer, total: number, windowMs: number): string[] {
+    const lines = [
+      `[BAUD SWITCH] Discarded ${total} byte(s) received in the ${windowMs}ms after the baud switch — ` +
+        `scrambled switch bytes, or the program's first output:` +
+        (total > bytes.length ? ` (first ${bytes.length} shown)` : '')
+    ];
+    for (let offset = 0; offset < bytes.length; offset += 32) {
+      const row = bytes.subarray(offset, offset + 32);
+      const hex = Array.from(row)
+        .map((b) => b.toString(16).toUpperCase().padStart(2, '0'))
+        .join(' ');
+      const text = Array.from(row)
+        .map((b) => (b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '.'))
+        .join('');
+      lines.push(`[BAUD SWITCH]   ${offset.toString(16).toUpperCase().padStart(4, '0')}: ${hex.padEnd(95)}  |${text}|`);
+    }
+    return lines;
   }
 
   static async serialDeviceList(ctx?: Context): Promise<string[]> {
@@ -985,11 +1029,23 @@ export class UsbSerial extends EventEmitter {
       // For downloads: ALWAYS reset and check P2
       await this.requestPropellerVersionForDownload(); // Always reset for download
 
-      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Waiting 200ms for P2 response...`);
-      await waitMSec(200); // wait 0.2 sec for response (usually takes 0.09 sec)
+      // The reply usually takes 0.09 s. Keep the proven 200 ms as a MINIMUM (fast hosts behave
+      // exactly as before), then keep watching for a LATE reply instead of declaring the attempt
+      // failed: on a slow host (Raspberry Pi) the reply can be delivered after 200 ms, and a miss
+      // costs a fresh reset — three misses and the download reports "No Propeller v2 device".
+      // The ROM loader holds its serial window for 60 s on the default boot pattern, so waiting
+      // longer for an answer already in flight costs nothing. The data handler sets the id/error.
+      const REPLY_MIN_MS = 200;
+      const REPLY_MAX_MS = 1000;
+      const waitStart = Date.now();
+      this.logConsoleMessage(`[USB-P2] * deviceIsPropellerV2() - Waiting ${REPLY_MIN_MS}-${REPLY_MAX_MS}ms for P2 response...`);
+      await waitMSec(REPLY_MIN_MS);
+      while (this._p2DeviceId === '' && this._latestError === '' && Date.now() - waitStart < REPLY_MAX_MS) {
+        await waitMSec(10);
+      }
 
       this.logChannelDiag(
-        `[P2-HANDSHAKE] attempt ${attempt}/${MAX_ATTEMPTS} after 200ms: id='${this._p2DeviceId}' buffer(${this._p2DetectionBuffer.length})='${this._p2DetectionBuffer}'`
+        `[P2-HANDSHAKE] attempt ${attempt}/${MAX_ATTEMPTS} after ${Date.now() - waitStart}ms: id='${this._p2DeviceId}' buffer(${this._p2DetectionBuffer.length})='${this._p2DetectionBuffer}'`
       );
 
       if (this._p2DetectionBuffer.length > 0) {

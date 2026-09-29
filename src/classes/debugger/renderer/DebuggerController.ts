@@ -15,6 +15,7 @@ import {
   M,
   STALL_CMD,
   BREAKPOINT_TIMEOUT_MS,
+  PHASE3_STALL_TIMEOUT_MS,
   HEAT_FADE_MS,
   REPEAT_THROTTLE_MS,
 } from '../shared/constants';
@@ -130,7 +131,7 @@ export class DebuggerController {
   private remnantBytes: number = 0;
   /**
    * §4 self-heal: timer that fires if an OPEN break stalls mid-Phase-3 (no bytes
-   * for BREAKPOINT_TIMEOUT_MS). Re-armed on every Phase-3 chunk (so it never
+   * for PHASE3_STALL_TIMEOUT_MS). Re-armed on every Phase-3 chunk (so it never
    * fires during an active burst — a full Phase-3 streams in ~ms at debug baud),
    * cleared at Done. On fire it aborts the stuck transaction so the channel
    * recovers instead of wedging (mirrors Pascal RByte's read timeout).
@@ -168,7 +169,7 @@ export class DebuggerController {
     this.stallHandle = setTimeout(() => {
       this.stallHandle = null;
       this.abortStuckTransaction();
-    }, BREAKPOINT_TIMEOUT_MS);
+    }, PHASE3_STALL_TIMEOUT_MS);
   }
 
   private clearStallTimer(): void {
@@ -192,7 +193,7 @@ export class DebuggerController {
     this.frameBuf.length = 0;
     this.expectingPhase1 = true; // resync: the next clean Phase-1 re-establishes framing
     if (this.callbacks.log) {
-      this.callbacks.log(`Phase-3 stall after ${BREAKPOINT_TIMEOUT_MS}ms — aborted stuck break (dropped ${dropped}B); awaiting fresh Phase-1`);
+      this.callbacks.log(`Phase-3 stall after ${PHASE3_STALL_TIMEOUT_MS}ms — aborted stuck break (dropped ${dropped}B); awaiting fresh Phase-1`);
     }
   }
 

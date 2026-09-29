@@ -147,6 +147,8 @@ export interface WindowColor {
 }
 
 export abstract class DebugWindowBase extends EventEmitter {
+  /** Messages held for a renderer that is not ready yet — a memory bound, not a freshness one. */
+  protected static readonly PRE_READY_QUEUE_MAX = 100_000;
   protected context: Context;
   protected windowLogPrefix: string = '?Base?'; // default if not overridden
   protected isLogging: boolean = false; // WARNING (REMOVE BEFORE FLIGHT)- change to 'false' - disable before commit
@@ -242,7 +244,11 @@ export abstract class DebugWindowBase extends EventEmitter {
 
     // Initialize startup message queue
     // Will transition to BatchedMessageQueue when window is ready
-    this.messageQueue = new MessageQueue<any>(1000, 5000);
+    // NO age expiry: a message waiting for the renderer is never stale — it is the head of the
+    // stream, and PNut draws every one. A 5 s expiry silently dropped it whenever the window took
+    // longer than that to load (a slow Raspberry Pi takes >8 s). The cap only bounds memory
+    // against a renderer that never loads; a drop is reported loudly in onWindowReady().
+    this.messageQueue = new MessageQueue<any>(DebugWindowBase.PRE_READY_QUEUE_MAX, 0);
 
     // Phase 1: Register window instance immediately for early message routing
     this.windowRouter.registerWindowInstance(this.windowId, this.windowType, this);
@@ -682,13 +688,15 @@ export abstract class DebugWindowBase extends EventEmitter {
    * a command handler that runs INSIDE the chain (e.g. CLOSE's flushPending()) or it self-deadlocks.
    * [shutdown cuts off a queued SAVE WINDOW]
    */
-  public async flushMessageChain(timeoutMs: number = 10000): Promise<void> {
+  public async flushMessageChain(timeoutMs: number = 10000): Promise<boolean> {
+    // Returns false on timeout, like flushPending(): a queued SAVE that never ran is lost output,
+    // and the shutdown must be able to report it rather than exit 0 over it.
     let timer: NodeJS.Timeout | undefined;
-    const timedOut = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, timeoutMs);
+    const timedOut = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
     });
     try {
-      await Promise.race([this.updateContentChain.catch(() => undefined), timedOut]);
+      return await Promise.race([this.updateContentChain.catch(() => undefined).then(() => true), timedOut]);
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -856,9 +864,13 @@ export abstract class DebugWindowBase extends EventEmitter {
       }
       await this.updateContentChain;
 
-      // Log stats if there were dropped messages
-      if (stats.droppedCount > 0) {
-        this.logMessageBase(`- WARNING: ${stats.droppedCount} messages were dropped from queue`);
+      // Read the drop count AFTER dequeueAll() — `stats` predates it — and report it on the
+      // always-on channel: a lost head-of-stream is data loss, not a diagnostic.
+      const droppedCount = this.messageQueue.getStats().droppedCount;
+      if (droppedCount > 0) {
+        this.context.logger.forceLogMessage(
+          `WARNING: ${this.windowType} window dropped ${droppedCount} message(s) received before it was ready`
+        );
       }
     }
 

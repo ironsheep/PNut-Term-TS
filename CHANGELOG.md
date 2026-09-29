@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.1.0 (2026-09-29)
+
+Downloads, debug windows and shutdown work on a slow host such as a Raspberry Pi.
+
+### New Features
+
+- **Exit code `70`**: PNut-Term-TS itself failed and printed the error. An internal crash
+  no longer exits `0` in the windowed app, or `1` from the command line
+
+### Improvements
+
+- **Console output**: a download that cannot start names the reason — the port failed to
+  open, no PropPlug was found, or several were found
+- **Console output**: bytes discarded after switching to a serial baud that differs from
+  the download baud are logged as hex and text
+
+### Bug Fixes
+
+- **Download at launch (`-r`, `-f`)**: a slow-loading window no longer fails the download
+  with `serial connection not ready (timed out after 10s)`. Seen on a Raspberry Pi
+- **`--exit-on-end-session`**: a failed download no longer ends with
+  `Uncaught exception: TypeError: Object has been destroyed`
+- **Debug Logger window**: on a slow host, its color theme and first lines no longer go
+  missing
+- **Debug display windows**: output sent while a window is still loading is drawn, however
+  long the window takes to open
+- **Download**: a P2 that answers identification late is found, not reported as
+  `No Propeller v2 device found`
+- **Quit and end of session**: a SAVE still finishing is given the full shutdown window;
+  one that cannot finish exits `125`, not `0`
+- **Single-step debugger**: a slow screen repaint no longer aborts a break as stalled; the
+  stall limit matches PNut's 500 ms
+
 ## v1.0.10 (2026-09-23)
 
 RAM downloads no longer fail at random with a checksum timeout.

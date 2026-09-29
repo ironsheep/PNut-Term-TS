@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 1.0.10*
+*Version 1.1.0*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -631,6 +631,7 @@ launching script can branch on `$?` identically in both modes.
 | 2 | Bad command line — nothing ran |
 | 3 | Download failed |
 | 4 | Fatal DEBUG display error in the P2 program — an unusable display name (see [Naming a display](#naming-a-display)) or a duplicated one |
+| 70 | Internal error — PNut-Term-TS itself failed (the error is printed), so the run's outcome is unknown. Please report it |
 | 124 | Headless `--timeout` expired |
 | 125 | The log may be incomplete — the shutdown drain ran long, or output was lost while writing |
 

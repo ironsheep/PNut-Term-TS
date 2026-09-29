@@ -397,6 +397,10 @@ export class LoggerWindow extends DebugWindowBase {
         return;
       }
       readyHandled = true;
+      // The 2 s fallback below can fire after the window is gone: a shutdown (or the user)
+      // closed it before its renderer ever loaded. Every call below would then throw
+      // "Object has been destroyed" from a timer — an uncaught exception. [teardown-race deref class]
+      if (window.isDestroyed()) return;
 
       if (ENABLE_CONSOLE_LOG) console.log('[DEBUG LOGGER] Renderer ready event fired!');
       window.show();
@@ -467,11 +471,14 @@ export class LoggerWindow extends DebugWindowBase {
       handleRendererReady();
     });
 
-    // Fallback timeout in case neither event fires
+    // Slow-load notice only. This used to FORCE the ready state after 2 s, but the page's IPC
+    // listeners (set-theme, append-messages-batch) exist only once it has loaded: on a slow host
+    // (a Raspberry Pi takes >8 s) the forced path sent the theme, the replay and the first lines
+    // into a page that could not hear them, and readyHandled then stopped the real event from
+    // resending. Readiness waits for ready-to-show / did-finish-load; lines queue meanwhile.
     setTimeout(() => {
-      if (!readyHandled) {
-        console.warn('[DEBUG LOGGER] ⚠️ Timeout waiting for renderer ready events, forcing ready state');
-        handleRendererReady();
+      if (!readyHandled && !window.isDestroyed()) {
+        console.warn('[DEBUG LOGGER] Renderer still loading after 2 s; lines are queued until it is ready');
       }
     }, 2000);
 

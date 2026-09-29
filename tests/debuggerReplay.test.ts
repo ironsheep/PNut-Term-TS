@@ -34,6 +34,7 @@ import { loadCaptureFixture, runReplay } from './shared/debuggerReplay';
 import { makeController, makeDebuggerState, buildPhase1Packet, buildPhase3Packet } from './shared/debuggerFixture';
 import {
   BREAKPOINT_TIMEOUT_MS,
+  PHASE3_STALL_TIMEOUT_MS,
   COG_BLOCK_SIZE,
   HUB_BLOCK_RATIO,
   DIS_LINES,
@@ -200,8 +201,12 @@ describe('debugger replay oracle (§1)', () => {
       h.controller.processPhase3(partial);
       expect(h.calls.phase3Complete).toBe(0); // still open, awaiting the rest
 
-      // Bytes stop. After the stall bound the watchdog aborts the stuck break.
+      // Bytes stop. A gap as long as the 250 ms DIM timer is NOT a stall: Pascal's RByte
+      // waits 500 ms (SerialUnit.pas:388), and a slow host's renderer can hold a chunk that long.
       jest.advanceTimersByTime(BREAKPOINT_TIMEOUT_MS + 1);
+      expect(logs.some((m) => /stall/i.test(m))).toBe(false);
+      // After the stall bound the watchdog aborts the stuck break.
+      jest.advanceTimersByTime(PHASE3_STALL_TIMEOUT_MS - BREAKPOINT_TIMEOUT_MS);
       expect(logs.some((m) => /stall/i.test(m))).toBe(true);
       expect(h.calls.phase3Complete).toBe(0); // the aborted break never completes
 

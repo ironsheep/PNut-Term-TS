@@ -41,11 +41,14 @@ export class UsbSerialProxy extends EventEmitter {
   // promises carry no timeout of their own — so a host that neither greets us nor exits leaves the
   // FIRST call (waitForPortOpen, from MainWindow.openSerialPort) unsettled FOREVER. openSerialPort
   // then never returns, the Downloader is never created, and a CLI-initiated download dies quietly
-  // in waitForConnectionReady's 10 s timeout with nothing printed anywhere: no port, no reset, no
+  // in waitForConnectionReady's timeout with nothing printed anywhere: no port, no reset, no
   // P2 output, no error, exit 0. Bound the handshake so that failure is reported instead of hung.
   // The host posts 'hello' at module top level as soon as its listener attaches, so a real startup
-  // is effectively instantaneous; this window only has to outlast a cold, AV-scanned first launch.
-  private static readonly HELLO_TIMEOUT_MS = 15000;
+  // is effectively instantaneous; this window only has to outlast a cold first launch — an
+  // AV-scanned Windows one, or a Raspberry Pi loading Electron and the serialport addon from a
+  // cold SD card (its main window alone took >8 s). Expiry is fatal to the session, so be generous.
+  // MainWindow.CONNECT_OPEN_TIMEOUT_MS must stay above this plus the 2 s open poll.
+  private static readonly HELLO_TIMEOUT_MS = 30000;
   private helloTimer: ReturnType<typeof setTimeout> | undefined;
   // Set once the host is known to be unusable (never greeted us, or exited). Latching it lets
   // call() reject immediately instead of parking yet another promise nobody will ever settle —

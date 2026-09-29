@@ -93,7 +93,7 @@ reported as out of diff scope rather than passing quietly.
 |---|---|---|
 | 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-09-08** | **v1.0.7** (plan at v2, incl. Phase D; PNut column of the two-build run complete, PNut-term-ts column still open) |
 | 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-09-08** | **v1.0.7** (input surface code-verified; carries the hint-bar correction) |
-| 2. `User-Guide-FEED.md` | **2026-09-09** | **v1.0.7** |
+| 2. `User-Guide-FEED.md` | **2026-09-29** | **v1.1.0** (adds exit code `70`, internal error; body otherwise as of 2026-09-09) |
 | 3. `LOGGING-STANDARDS-FEED.md` | **2026-09-09** | **v1.0.7** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 snapshot — still code-accurate at v1.0.7: `src/utils/windowPlacer.ts` has not changed since |
 

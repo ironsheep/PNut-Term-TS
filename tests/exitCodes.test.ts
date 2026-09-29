@@ -15,6 +15,8 @@ describe('Unified exit-code map (headed == headless)', () => {
     expect(ExitCode.PortError).toBe(1);
     expect(ExitCode.UsageError).toBe(2);
     expect(ExitCode.DownloadFailed).toBe(3);
+    expect(ExitCode.DisplayError).toBe(4);
+    expect(ExitCode.InternalError).toBe(70);
     expect(ExitCode.RunTimeout).toBe(124);
     expect(ExitCode.FlushTimeout).toBe(125);
   });

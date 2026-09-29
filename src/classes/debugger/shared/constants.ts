@@ -144,6 +144,13 @@ export const KEEP_INIT_OR_DEBUG_MASK = BREAK_INIT | BREAK_DEBUG;
 export const REPEAT_THROTTLE_MS = 50;
 /** After this long without a new break, dim the display and show "Break". */
 export const BREAKPOINT_TIMEOUT_MS = 250;
+/**
+ * A break whose Phase-3 bytes stop for this long is aborted as stuck. Pascal's RByte gives up
+ * after 500 ms without a byte (SerialUnit.pas:388, `GetTickCount - Ticks > 500`). This used to
+ * borrow the 250 ms DIM timer above — half Pascal's margin, and on a slow host a renderer busy
+ * painting can hold the next chunk that long while the P2 has already sent it.
+ */
+export const PHASE3_STALL_TIMEOUT_MS = 500;
 
 // ============================================================================
 // Pascal panel grid layout (§5.5) — columns (charWidth=8) × half-rows (8 px)

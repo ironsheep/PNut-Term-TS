@@ -32,6 +32,14 @@
  *                       and keeps running) — see DOCs/IMPLEMENTATION_NOTES.md.
  *                       Headed mode only today (headless does not register
  *                       display windows with the router).
+ *   70  INTERNAL_ERROR  PNut-Term-TS itself failed: an uncaught exception or an
+ *                       unexpected failure inside the tool, reported loudly on
+ *                       stderr. Nothing is known about the run's outcome, so it
+ *                       must never read as success — and it is not the port,
+ *                       the download or your program, so it must not borrow
+ *                       their codes either. Never overwrites a more specific
+ *                       failure already decided. (70 is the sysexits.h
+ *                       EX_SOFTWARE convention.)
  *   124 RUN_TIMEOUT     Overall run timeout elapsed (the `--timeout` budget).
  *   125 FLUSH_TIMEOUT   Shutdown drain exceeded its window: one or more SAVEs /
  *                       log / recording flushes may be INCOMPLETE. This is the
@@ -45,6 +53,7 @@ export enum ExitCode {
   UsageError = 2,
   DownloadFailed = 3,
   DisplayError = 4,
+  InternalError = 70,
   RunTimeout = 124,
   FlushTimeout = 125
 }
