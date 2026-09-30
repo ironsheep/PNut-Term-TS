@@ -77,9 +77,6 @@ export enum CanvasOperationType {
   SET_TEXTSTYLE = 'SET_TEXTSTYLE',
   SET_PRECISION = 'SET_PRECISION',
 
-  // Interactive input
-  PC_INPUT = 'PC_INPUT',
-
   // Window operations
   CONFIGURE_WINDOW = 'CONFIGURE_WINDOW',
   CLEAR_CANVAS = 'CLEAR_CANVAS',
@@ -209,9 +206,6 @@ export class PlotWindowIntegrator {
       case CanvasOperationType.CONFIGURE_WINDOW:
         // CONFIGURE_WINDOW needs special handling - don't convert to SET_CURSOR
         baseType = 'CONFIGURE_WINDOW' as any; // Cast to bypass type checking since base doesn't have this
-        break;
-      case CanvasOperationType.PC_INPUT:
-        baseType = 'PC_INPUT' as any;
         break;
       default:
         // For operations that don't map to base types, use SET_CURSOR
@@ -369,10 +363,6 @@ export class PlotWindowIntegrator {
 
         case 'SET_CARTESIAN' as any:
           this.executeSetCartesian(operation.parameters);
-          break;
-
-        case CanvasOperationType.PC_INPUT:
-          await this.executePcInput(operation.parameters);
           break;
 
         case CanvasOperationType.DEFINE_SPRITE:
@@ -977,83 +967,6 @@ export class PlotWindowIntegrator {
     this.logConsoleMessage(
       `[INTEGRATOR] Cartesian config set: xdir=${this.plotWindow.cartesianConfig.xdir}, ydir=${this.plotWindow.cartesianConfig.ydir}`
     );
-  }
-
-  private async executePcInput(params: Record<string, any>): Promise<void> {
-    this.logConsoleMessage('[INTEGRATOR] executePcInput called with:', params);
-
-    const inputType = params.inputType;
-
-    if (inputType === 'KEY') {
-      // Handle PC_KEY - get last pressed key and send back to P2
-      const keyCode = await this.getLastPressedKey();
-      this.logConsoleMessage(`[INTEGRATOR] PC_KEY returning: ${keyCode}`);
-
-      // Send response back to P2 via debug protocol
-      this.sendInputResponseToP2('KEY', keyCode);
-    } else if (inputType === 'MOUSE') {
-      // Handle PC_MOUSE - get current mouse state and encode as 32-bit value
-      const mouseState = await this.getCurrentMouseState();
-      this.logConsoleMessage(`[INTEGRATOR] PC_MOUSE returning: 0x${mouseState.toString(16).padStart(8, '0')}`);
-
-      // Send response back to P2 via debug protocol
-      this.sendInputResponseToP2('MOUSE', mouseState);
-    } else {
-      console.error(`[INTEGRATOR] Unknown PC_INPUT type: ${inputType}`);
-    }
-  }
-
-  private async getLastPressedKey(): Promise<number> {
-    // Get the last pressed key from the renderer's window object
-    // Returns 0 if no key available (non-blocking behavior)
-    try {
-      const keyCode = await this.plotWindow.debugWindow?.webContents.executeJavaScript(`
-        (function() {
-          const key = window.lastPressedKey || 0;
-          // Clear the key for one-shot behavior
-          window.lastPressedKey = 0;
-          return key;
-        })()
-      `);
-
-      this.logConsoleMessage(`[INTEGRATOR] Retrieved key from renderer: ${keyCode || 0}`);
-      return keyCode || 0;
-    } catch (error) {
-      console.error(`[INTEGRATOR] Failed to get key from renderer:`, error);
-      return 0; // No key available
-    }
-  }
-
-  private async getCurrentMouseState(): Promise<number> {
-    // Get current mouse state from the renderer's window object
-    // Returns 32-bit encoded value: X/Y position (bits 0-23), buttons (bits 24-26), over-canvas (bit 31)
-    try {
-      const mouseState = await this.plotWindow.debugWindow?.webContents.executeJavaScript(`
-        (function() {
-          return window.currentMouseState || 0;
-        })()
-      `);
-
-      this.logConsoleMessage(
-        `[INTEGRATOR] Retrieved mouse state from renderer: 0x${(mouseState || 0).toString(16).padStart(8, '0')}`
-      );
-      return mouseState || 0;
-    } catch (error) {
-      console.error(`[INTEGRATOR] Failed to get mouse state from renderer:`, error);
-      return 0; // No mouse state available
-    }
-  }
-
-  private sendInputResponseToP2(inputType: string, value: number): void {
-    // Send the input response back to P2 via the debug protocol
-    // This needs to integrate with the existing debugger protocol system
-    this.logConsoleMessage(`[INTEGRATOR] Sending ${inputType} response to P2: ${value}`);
-
-    if (this.plotWindow.sendDebugResponse) {
-      this.plotWindow.sendDebugResponse(inputType, value);
-    } else {
-      console.warn(`[INTEGRATOR] No debug response method available for ${inputType}`);
-    }
   }
 
   /**
@@ -2128,9 +2041,6 @@ export class PlotWindowIntegrator {
           break;
         case 'SET_PRECISION':
           plotType = CanvasOperationType.SET_PRECISION;
-          break;
-        case 'PC_INPUT':
-          plotType = CanvasOperationType.PC_INPUT;
           break;
         case 'CLEAR_CANVAS':
           plotType = CanvasOperationType.CLEAR_CANVAS;

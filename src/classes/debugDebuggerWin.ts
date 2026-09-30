@@ -55,6 +55,8 @@ const ENABLE_CONSOLE_LOG: boolean = false;
  * - Right: HUB memory viewer with mini-map
  */
 export class DebugDebuggerWindow extends DebugWindowBase {
+  // Not a DEBUG display: no Pascal _Update loop, so it never answers PC_KEY / PC_MOUSE.
+  protected readonly answersPcInput = false;
   private cogId: number;
   private cogState: COGDebugState;
   // Core debugger components. The renderer bundle (debugger/renderer/) owns all

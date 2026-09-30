@@ -386,22 +386,23 @@ describe('DebugBitmapWindow Command Tests', () => {
       );
     });
 
-    it('should not process data after PC_KEY', async () => {
+    // Pascal BITMAP_Update handles key_pc_key / key_pc_mouse as ordinary elements and keeps
+    // looping (DebugDisplayUnit.pas BITMAP_Update, `while not NextEnd`), so data after the
+    // token is still plotted — the old "stops data processing" expectation dropped it.
+    it('still processes data after PC_KEY (Pascal keeps looping)', async () => {
       const mockPackedDataProcessor = PackedDataProcessor as jest.Mocked<typeof PackedDataProcessor>;
 
       await window.updateContent(['PC_KEY', '123', '456']);
 
-      // PC_KEY should stop data processing
-      expect(mockPackedDataProcessor.unpackSamples).not.toHaveBeenCalled();
+      expect(mockPackedDataProcessor.unpackSamples).toHaveBeenCalledWith(123, expect.anything());
     });
 
-    it('should not process data after PC_MOUSE', async () => {
+    it('still processes data after PC_MOUSE (Pascal keeps looping)', async () => {
       const mockPackedDataProcessor = PackedDataProcessor as jest.Mocked<typeof PackedDataProcessor>;
 
       await window.updateContent(['PC_MOUSE', '789', '012']);
 
-      // PC_MOUSE should stop data processing
-      expect(mockPackedDataProcessor.unpackSamples).not.toHaveBeenCalled();
+      expect(mockPackedDataProcessor.unpackSamples).toHaveBeenCalledWith(789, expect.anything());
     });
   });
 

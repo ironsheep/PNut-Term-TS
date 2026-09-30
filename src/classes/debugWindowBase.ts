@@ -23,6 +23,18 @@ import { TLongTransmission } from './shared/tLongTransmission';
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
 
+// Case-insensitive keyword tests for processMessageWithPcInput(). They run on every routed
+// message, so the length check comes first and toUpperCase() only runs on a plausible match.
+function isPcInputToken(token: unknown): boolean {
+  if (typeof token !== 'string' || (token.length !== 6 && token.length !== 8)) return false;
+  const upper = token.toUpperCase();
+  return upper === 'PC_KEY' || upper === 'PC_MOUSE';
+}
+
+function isCloseToken(token: unknown): boolean {
+  return typeof token === 'string' && token.length === 5 && token.toUpperCase() === 'CLOSE';
+}
+
 // src/classes/debugWindowBase.ts
 
 /**
@@ -224,6 +236,12 @@ export abstract class DebugWindowBase extends EventEmitter {
   } = { left: false, middle: false, right: false };
   protected vMouseWheel: number = 0; // Mouse wheel delta (cleared after transmission)
   private mouseInputEnabled: boolean = false; // Flag to prevent duplicate mouse input initialization
+  private keyboardInputEnabled: boolean = false; // Same, for keyboard: PC_KEY is polled, so enable once
+  // Every display window's Pascal <TYPE>_Update loop answers PC_KEY / PC_MOUSE (DebugDisplayUnit.pas
+  // LOGIC :1062, SCOPE :1262, SCOPE_XY :1463, FFT :1651, SPECTRO :1811, PLOT :2149, TERM :2251,
+  // BITMAP, MIDI). Default ON: a window that fails to answer hangs the P2 in rxlong forever, so
+  // only the non-display windows (logger, COG, debugger) opt out.
+  protected readonly answersPcInput: boolean = true;
   private mouseEventHandlersSetup: boolean = false; // Flag to prevent duplicate IPC handler registration
 
   // TLong transmission utility for P2 communication
@@ -473,8 +491,12 @@ export abstract class DebugWindowBase extends EventEmitter {
 
       case 'PC_KEY':
         this.logMessageBase('Executing PC_KEY command');
-        // Enable keyboard input forwarding (for capturing future keypresses)
-        this.enableKeyboardInput();
+        // Enable keyboard input forwarding (for capturing future keypresses). PC_KEY is
+        // polled, often in a tight loop, so enable ONCE: re-running it per poll queued a
+        // renderer script per poll, and on a slow host real input waited behind them.
+        if (!this.keyboardInputEnabled) {
+          this.keyboardInputEnabled = this.tryEnableInput('keyboard', () => this.enableKeyboardInput());
+        }
         // Return current keypress value and clear it (one-shot consumption)
         try {
           this.tLongTransmitter.transmitKeyPress(this.vKeyPress);
@@ -490,8 +512,7 @@ export abstract class DebugWindowBase extends EventEmitter {
         // Enable mouse input forwarding (for capturing future mouse events)
         // Only initialize once to prevent duplicate handlers and JavaScript redeclaration errors
         if (!this.mouseInputEnabled) {
-          this.enableMouseInput();
-          this.mouseInputEnabled = true;
+          this.mouseInputEnabled = this.tryEnableInput('mouse', () => this.enableMouseInput());
         }
         // Return current mouse state and pixel color
         try {
@@ -618,7 +639,7 @@ export abstract class DebugWindowBase extends EventEmitter {
       // "Object has been destroyed". That race is expected — catch it here at the
       // shared dispatch chokepoint so it can never crash the app.
       try {
-        await this.processMessageImmediate(lineParts);
+        await this.processMessageWithPcInput(lineParts);
       } catch (error) {
         const windowGone = !this._debugWindow || this._debugWindow.isDestroyed();
         if (windowGone) {
@@ -639,6 +660,45 @@ export abstract class DebugWindowBase extends EventEmitter {
       } else {
         this.logMessageBase(`- WARNING: Message queue full for ${this.windowType}, message dropped`);
       }
+    }
+  }
+
+  /**
+   * Run one message, answering each PC_KEY / PC_MOUSE at the position it holds in the message.
+   *
+   * Pascal's <TYPE>_Update loops handle key_pc_key / key_pc_mouse as ordinary elements, so they
+   * are answered wherever they appear. The P2 emits them LAST, right after whatever directives the
+   * backtick string carried (Spin2_debugger.spin2:603, "PC_KEY"+CR+LF), then blocks in rxlong with
+   * no timeout (:613). Our windows only recognise them as the FIRST token (handleCommonCommand),
+   * so `debug(`p clear pc_key(@k))` sent no reply and hung the P2 forever. Splitting the message
+   * at each PC_* token keeps Pascal's order: the directives before it run first (so PC_MOUSE
+   * samples the pixel they drew), then the reply goes out, then anything after it. CLOSE is a
+   * message-level flag that Pascal honours only after the whole message has run
+   * (DebugUnit.pas:236-237), so when a PC_* token is present CLOSE is held back and run last.
+   * Quoted strings arrive as single tokens (WindowRouter.tokenizeCommand), so a quoted
+   * 'PC_KEY' is text and never matches.
+   */
+  private async processMessageWithPcInput(lineParts: string[] | any): Promise<void> {
+    if (!this.answersPcInput || !Array.isArray(lineParts) || !lineParts.some(isPcInputToken)) {
+      await this.processMessageImmediate(lineParts);
+      return;
+    }
+    const parts = lineParts.filter((part) => !isCloseToken(part));
+    const closeToken = parts.length < lineParts.length ? lineParts.find(isCloseToken) : undefined;
+    let segmentStart = 0;
+    for (let index = 0; index < parts.length; index++) {
+      if (!isPcInputToken(parts[index])) continue;
+      if (index > segmentStart) {
+        await this.processMessageImmediate(parts.slice(segmentStart, index));
+      }
+      await this.processMessageImmediate([parts[index]]);
+      segmentStart = index + 1;
+    }
+    if (segmentStart < parts.length) {
+      await this.processMessageImmediate(parts.slice(segmentStart));
+    }
+    if (closeToken !== undefined) {
+      await this.processMessageImmediate([closeToken]);
     }
   }
 
@@ -2180,15 +2240,8 @@ export abstract class DebugWindowBase extends EventEmitter {
       if (channel === 'mouse-event') {
         const [x, y, buttons, wheelDelta] = args;
 
-        // Handle wheel events with 100ms timer
         if (wheelDelta !== 0) {
-          this.lastWheelDelta = wheelDelta;
-          if (this.wheelTimer) {
-            clearTimeout(this.wheelTimer);
-          }
-          this.wheelTimer = setTimeout(() => {
-            this.lastWheelDelta = 0;
-          }, 100);
+          this.noteMouseWheel(wheelDelta);
         }
 
         // Transform coordinates based on window type
@@ -2209,7 +2262,6 @@ export abstract class DebugWindowBase extends EventEmitter {
           middle: buttons.middle || false,
           right: buttons.right || false
         };
-        // Note: vMouseWheel is updated by wheel event handler
 
         // Get pixel color at position
         const pixelGetter = this.getPixelColorGetter();
@@ -2225,6 +2277,44 @@ export abstract class DebugWindowBase extends EventEmitter {
         this.inputForwarder.queueKeyEvent(key);
       }
     });
+  }
+
+  /**
+   * Enable input capture for PC_KEY / PC_MOUSE, and report whether it is now in place.
+   *
+   * Capture is best-effort: the P2 is blocked in rxlong until it gets its reply, so a failure
+   * here must never stop the reply from going out (LOGIC's override once threw on every
+   * PC_MOUSE and hung the P2). It only counts as enabled once a BrowserWindow exists to attach
+   * to — SCOPE and FFT create theirs on first data, so a PC_* poll that arrives earlier retries
+   * on the next poll instead of marking capture done with nothing attached.
+   */
+  private tryEnableInput(kind: 'keyboard' | 'mouse', enable: () => void): boolean {
+    if (!this.debugWindow) {
+      return false;
+    }
+    try {
+      enable();
+    } catch (error) {
+      this.context.logger.forceLogMessage(`WARNING: ${this.windowType} ${kind} capture setup failed: ${error}`);
+    }
+    return true;
+  }
+
+  /**
+   * Record a mouse-wheel notch for the next PC_MOUSE reply.
+   * Pascal FormMouseWheel (DebugDisplayUnit.pas): vMouseWheel := ±1, and a 100 ms
+   * MouseWheelTimer clears it again if no PC_MOUSE consumed it (SendMousePos also clears it).
+   */
+  protected noteMouseWheel(wheelDelta: number): void {
+    this.vMouseWheel = wheelDelta > 0 ? 1 : -1;
+    this.lastWheelDelta = this.vMouseWheel;
+    if (this.wheelTimer) {
+      clearTimeout(this.wheelTimer);
+    }
+    this.wheelTimer = setTimeout(() => {
+      this.vMouseWheel = 0;
+      this.lastWheelDelta = 0;
+    }, 100);
   }
 
   /**

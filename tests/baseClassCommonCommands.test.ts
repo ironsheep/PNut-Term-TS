@@ -305,13 +305,26 @@ describe('Base Class Common Commands', () => {
         );
       });
 
-      test('should enable keyboard input on PC_KEY', async () => {
+      test('should enable keyboard input on PC_KEY, once, when a window exists', async () => {
         // Spy on the actual protected method (the public wrapper is not called by handleCommonCommand)
+        const enableSpy = jest.spyOn(testWindow as any, 'enableKeyboardInput');
+        (testWindow as any)._debugWindow = createMockBrowserWindow();
+
+        await testWindow.testHandleCommonCommand(['PC_KEY']);
+        await testWindow.testHandleCommonCommand(['PC_KEY']);
+
+        expect(enableSpy).toHaveBeenCalledTimes(1);
+      });
+
+      test('with no window yet, PC_KEY is answered and capture is retried on a later poll', async () => {
         const enableSpy = jest.spyOn(testWindow as any, 'enableKeyboardInput');
 
         await testWindow.testHandleCommonCommand(['PC_KEY']);
+        expect(enableSpy).not.toHaveBeenCalled();
 
-        expect(enableSpy).toHaveBeenCalled();
+        (testWindow as any)._debugWindow = createMockBrowserWindow();
+        await testWindow.testHandleCommonCommand(['PC_KEY']);
+        expect(enableSpy).toHaveBeenCalledTimes(1);
       });
 
       test('should transmit keypress value and clear it', async () => {
@@ -413,13 +426,15 @@ describe('Base Class Common Commands', () => {
         );
       });
 
-      test('should enable mouse input on PC_MOUSE', async () => {
+      test('should enable mouse input on PC_MOUSE, once, when a window exists', async () => {
         // Spy on the actual protected method
         const enableSpy = jest.spyOn(testWindow as any, 'enableMouseInput');
+        (testWindow as any)._debugWindow = createMockBrowserWindow();
 
         await testWindow.testHandleCommonCommand(['PC_MOUSE']);
+        await testWindow.testHandleCommonCommand(['PC_MOUSE']);
 
-        expect(enableSpy).toHaveBeenCalled();
+        expect(enableSpy).toHaveBeenCalledTimes(1);
       });
 
       test('should transmit mouse data when in bounds', async () => {

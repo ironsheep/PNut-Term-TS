@@ -223,12 +223,6 @@ export class DebugPlotWindow extends DebugWindowBase {
   // Performance monitoring
   private performanceMonitor?: PlotPerformanceMonitor;
 
-  // PLOT-specific input state (legacy - now handled by base class)
-  // These are kept for compatibility but base class vKeyPress and mouse state variables are used
-  private lastPressedKey: number = 0; // Legacy - use base class vKeyPress instead
-  private keyBuffer: number[] = []; // Legacy - not used with base class implementation
-  private currentMouseState: number = 0; // Legacy - use base class mouse state variables instead
-
   constructor(ctx: Context, displaySpec: PlotDisplaySpec, windowId?: string) {
     // Use the user-provided display name as the window ID (the unique routing key), matching
     // TERM/LOGIC. The old `plot-${Date.now()}` default collided when two same-type windows were
@@ -926,8 +920,6 @@ export class DebugPlotWindow extends DebugWindowBase {
           void this.flushRender();
         }
 
-        // Set up input event listeners after canvas is ready
-        this.setupInputEventListeners();
         // Initialize performance overlay (if enabled)
         if (ENABLE_PERFORMANCE_MONITORING) {
           this.initializePerformanceOverlay();
@@ -1031,65 +1023,6 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     this.debugWindow.webContents.executeJavaScript(jsCode).catch((error) => {
       // Silently ignore errors during performance updates to avoid spam
     });
-  }
-
-  private setupInputEventListeners(): void {
-    if (!this.debugWindow) return;
-
-    // Note: Mouse event handlers are now in initial HTML with proper require('electron') access
-    // This method only handles keyboard events which don't need IPC
-    const inputHandlerCode = `
-      (function() {
-        // Initialize input state for keyboard
-        window.lastPressedKey = 0;
-
-        // Add keydown event listener to capture key presses
-        document.addEventListener('keydown', function(event) {
-          // Convert key to ASCII/scan code
-          let keyCode = 0;
-
-          if (event.key.length === 1) {
-            // Regular character - use ASCII code
-            keyCode = event.key.charCodeAt(0);
-          } else {
-            // Special keys - map to scan codes (simplified mapping)
-            switch (event.key) {
-              case 'Enter': keyCode = 13; break;
-              case 'Escape': keyCode = 27; break;
-              case 'Backspace': keyCode = 8; break;
-              case 'Tab': keyCode = 9; break;
-              case 'ArrowUp': keyCode = 38; break;
-              case 'ArrowDown': keyCode = 40; break;
-              case 'ArrowLeft': keyCode = 37; break;
-              case 'ArrowRight': keyCode = 39; break;
-              case 'Delete': keyCode = 7; break; // Pascal kDelete -> Chr(7) (:844); matches enableKeyboardInput()
-              case 'Home': keyCode = 36; break;
-              case 'End': keyCode = 35; break;
-              case 'PageUp': keyCode = 33; break;
-              case 'PageDown': keyCode = 34; break;
-              default: keyCode = 0; // Unknown key
-            }
-          }
-
-          if (keyCode > 0) {
-            window.lastPressedKey = keyCode;
-            if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT INPUT] Key pressed:', event.key, 'Code:', keyCode);
-          }
-        });
-
-        if (${ENABLE_CONSOLE_LOG}) console.log('[PLOT INPUT] Keyboard event listeners setup complete');
-        return 'Keyboard handlers ready';
-      })()
-    `;
-
-    this.debugWindow.webContents
-      .executeJavaScript(inputHandlerCode)
-      .then((result) => {
-        this.logMessage(`Input event listeners setup: ${result}`);
-      })
-      .catch((error) => {
-        this.logMessage(`Failed to setup input event listeners: ${error}`);
-      });
   }
 
   private setupDoubleBuffering(): void {
@@ -3812,15 +3745,8 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           this.logMessage(`[MOUSE DIAG] TRANSITION: OUT-OF-BOUNDS -> In-bounds (${x},${y})`);
         }
 
-        // Handle wheel events with 100ms timer (Pascal: DebugDisplayUnit.pas:811-822)
         if (wheelDelta !== 0) {
-          this.lastWheelDelta = wheelDelta;
-          if (this.wheelTimer) {
-            clearTimeout(this.wheelTimer);
-          }
-          this.wheelTimer = setTimeout(() => {
-            this.lastWheelDelta = 0;
-          }, 100);
+          this.noteMouseWheel(wheelDelta);
         }
 
         // Store mouse state for PC_MOUSE command (Pascal behavior: stores current mouse state)
@@ -3832,8 +3758,6 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
           middle: buttons.middle || false,
           right: buttons.right || false
         };
-        // Store wheel delta for PC_MOUSE transmission (Pascal: DebugDisplayUnit.pas:813)
-        this.vMouseWheel = this.lastWheelDelta;
 
         // Get pixel color at position
         const pixelGetter = this.getPixelColorGetter();
@@ -3863,6 +3787,11 @@ ${warnings.length > 0 ? `⚠️ ${warnings.length} warnings` : '✓ OK'}`;
     if (this.debugWindow) {
       this.debugWindow.webContents.executeJavaScript(`
         (function() {
+          // Guard against multiple initialization: an unguarded re-injection added one more
+          // keydown listener per call, so every keypress was reported N times.
+          if (window.__keyboardInputInitialized) return;
+          window.__keyboardInputInitialized = true;
+
           // Use direct IPC communication (working pattern from old Plot inline handlers)
           const { ipcRenderer } = require('electron');
 

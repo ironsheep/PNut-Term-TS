@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1.1 (2026-09-30)
+
+A P2 program that reads the keyboard or mouse from a debug display gets its answer.
+
+### Bug Fixes
+
+- **`PC_KEY` / `PC_MOUSE`**: answered when other directives precede them in the same
+  statement, such as `` debug(`p clear pc_key(@k)) ``. The P2 program no longer hangs there
+- **`PC_MOUSE` in a LOGIC display**: answered on every read; the P2 program no longer hangs
+  on the first one
+- **`PC_MOUSE`**: reports the mouse wheel in every display type. In PLOT, a notch not read
+  within 100 ms is no longer reported
+- **`PC_KEY` in a loop, PLOT display**: keyboard and mouse input no longer falls behind or
+  repeats. Most noticeable on a slow host such as a Raspberry Pi
+- **SCOPE and FFT displays**: the keyboard and mouse are captured even when the program
+  reads them before sending its first data
+
 ## v1.1.0 (2026-09-29)
 
 Downloads, debug windows and shutdown work on a slow host such as a Raspberry Pi.

@@ -1840,8 +1840,11 @@ export class DebugLogicWindow extends DebugWindowBase {
     if (this.debugWindow) {
       const marginLeft = this.contentInset + this.labelWidth;
       const marginTop = this.channelVInset;
-      const displayWidth = this.displaySpec.size.width - this.contentInset - this.labelWidth;
-      const displayHeight = this.displaySpec.size.height - 2 * this.channelVInset;
+      // LogicDisplaySpec.size is never populated (LOGIC is sized by SAMPLES x SPACING and one
+      // text row per channel), so reading it threw on the first PC_MOUSE: the reply was never
+      // sent and the P2 hung in rxlong. Use the geometry createDebugWindow() actually lays out.
+      const displayWidth = this.displaySpec.nbrSamples * this.displaySpec.spacing;
+      const displayHeight = this.displaySpec.font.charHeight * this.singleBitChannelCount;
 
       this.debugWindow.webContents
         .executeJavaScript(

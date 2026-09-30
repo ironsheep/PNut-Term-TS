@@ -49,6 +49,9 @@ interface PerformanceWarning {
  * - Terminal output display (MainWindow handles this)
  */
 export class LoggerWindow extends DebugWindowBase {
+  // Not a DEBUG display: no Pascal _Update loop, so it never answers PC_KEY / PC_MOUSE.
+  protected readonly answersPcInput = false;
+
   /**
    * Get the canvas ID for this window (required by base class)
    */

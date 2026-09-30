@@ -1244,15 +1244,6 @@ export class DebugFFTWindow extends DebugWindowBase {
   }
 
   /**
-   * Handle PC_KEY or PC_MOUSE input commands
-   */
-  private handleInputCommand(parts: string[]): void {
-    // This will be implemented with InputForwarder integration
-    // For now, just log
-    this.logMessage(`Input command: ${parts.join(' ')}`);
-  }
-
-  /**
    * Get bits per sample for a packed data mode
    */
   private getBitsPerSample(mode: ePackedDataMode): number {
