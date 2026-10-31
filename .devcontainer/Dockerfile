@@ -1,8 +1,8 @@
 # Derived dev image for PNut-Term-TS.
 #
-# Bakes the two stable, network-heavy installs that previously ran in
-# postCreateCommand on EVERY container create (pnut-ts compiler + Claude CLI).
-# These now live in cached layers, so a rebuild is cheap and offline.
+# Bakes the stable, network-heavy install that previously ran in
+# postCreateCommand on EVERY container create (the pnut-ts compiler) into a
+# cached layer, so a rebuild is cheap and offline.
 #
 # --- base image: the Node major is PINNED, and pinned to what SHIPS -----------
 # 22, because that is what the project actually builds and releases on. Five
@@ -43,7 +43,7 @@ RUN git config --system --add safe.directory '/workspaces/*'
 # which produces a NEW inode, leaving the container's mount pointed at the old
 # unlinked one. The container then reads frozen content until it is recreated.
 # That is the "stale .gitconfig" failure; it stranded the fleet on 2026-08-28 and
-# cleared only on reboot. The other host mounts (.ssh, .claude, container-tools)
+# cleared only on reboot. The other host mounts (.ssh and the local override's)
 # are DIRECTORIES and are immune, because each lookup inside them resolves fresh.
 # .gitconfig was the fleet's only single-file mount. Retired 2026-09-10.
 #
@@ -142,11 +142,3 @@ RUN cd /tmp/pnut \
          ! -name 'pnut-ts' ! -name 'pnut_ts' -exec cp {} /opt/pnut-ts-docs/ \; \
     && cd / && rm -rf /tmp/pnut \
     && pnut-ts --version
-
-# --- Claude CLI (was: curl | bash in postCreateCommand) ----------------------
-# Installed as the `node` user so it lands in /home/node/.local/bin.
-USER node
-RUN curl -fsSL https://claude.ai/install.sh | bash \
-    && grep -q '\.local/bin' ~/.bashrc 2>/dev/null \
-       || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-USER root
