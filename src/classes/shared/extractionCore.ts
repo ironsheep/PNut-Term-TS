@@ -4,6 +4,7 @@
 
 import { SharedCircularBuffer, NextStatus } from './sharedCircularBuffer';
 import { SharedMessagePool, SharedMessageType, PoolSlot } from './sharedMessagePool';
+import { isEndSessionLineHead } from './endSessionSentinel';
 
 /**
  * ExtractionCore — the pure, transport-agnostic message-extraction engine.
@@ -516,6 +517,30 @@ export class ExtractionCore {
       // - All other messages use RELAXED check (printable ASCII is a valid line start)
       if (messageBytes.length === 1) {
         isBacktickMessage = result.value === 0x60;
+      }
+
+      // DEBUG_END_SESSION: the line "CogN  [ts  ]ESC" ends at its ESC. Take the CR / LF
+      // the debugger sends after it (up to one pair), then release the line, whatever
+      // comes next. Without this, a sentinel with no CR LF after it was never released,
+      // and one followed by non-text bytes was merged into the next message.
+      if (result.value === 0x1b && !isBacktickMessage && isEndSessionLineHead(Uint8Array.from(messageBytes))) {
+        let terminators = 0;
+        while (terminators < 2) {
+          if (!buffer.hasData()) {
+            if (idleTimeoutExpired) {
+              break;
+            }
+            buffer.restorePosition();
+            return null; // the CR LF may still be in transit; wait for it or for idle
+          }
+          const peeked = buffer.peekAtOffset(0, 1);
+          if (!peeked || (peeked[0] !== 0x0d && peeked[0] !== 0x0a)) {
+            break;
+          }
+          messageBytes.push(buffer.next().value!);
+          terminators++;
+        }
+        return new Uint8Array(messageBytes);
       }
 
       // Select boundary validator based on message type

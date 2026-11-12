@@ -10,6 +10,7 @@ import { WindowPlacer, PlacementConfig, PlacementStrategy } from '../utils/windo
 import * as fs from 'fs';
 import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime } from '../utils/files';
+import { isEndSessionSentinel, formatEndSessionLine } from './shared/endSessionSentinel';
 
 // Console logging control for debugging
 const ENABLE_CONSOLE_LOG: boolean = false;
@@ -630,12 +631,14 @@ export class LoggerCOGWindow extends DebugWindowBase {
     if (message instanceof Uint8Array) {
       if (ENABLE_CONSOLE_LOG) console.warn(`[COG${this.cogId}] WARNING: Received binary data instead of text`);
 
-      if (this.isASCIIData(message)) {
+      if (isEndSessionSentinel(message)) {
+        // DEBUG(DEBUG_END_SESSION): the line as sent, ESC shown as a tag. The old
+        // "contains 0x1B" test also matched binary DEBUG data (sample $031B) and
+        // replaced the whole message — the DOG-VOICE class (#32).
+        displayMessage = formatEndSessionLine(message);
+      } else if (this.isASCIIData(message)) {
         // Valid ASCII - decode as text
         displayMessage = new TextDecoder().decode(message);
-      } else if (message.includes(0x1b)) {
-        // DEBUG_END_SESSION sentinel (0x1B) - display as session end
-        displayMessage = '[DEBUG_END_SESSION]';
       } else {
         // Binary data misclassified - display defensively
         displayMessage = this.formatBinaryAsHexFallback(message);

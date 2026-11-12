@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1.2 (2026-11-12)
+
+A program that ends with `debug(DEBUG_END_SESSION)` now ends the session.
+
+### Bug Fixes
+
+- **`DEBUG_END_SESSION`**: ends the session in every mode, with no option needed, and closes
+  the whole application after writing out window SAVEs and logs. Before this, the constant
+  was ignored in the windowed app and in `--headless` runs, so a run waited for its
+  `--timeout` or never ended
+- **`DEBUG_END_SESSION` with no line ending after it**: recognised too. Before, the line was
+  never processed at all
+- **Debug Logger**: the end-of-session line is shown as `Cog0  <END_SESSION>` instead of a
+  hex dump headed `[ROUTING ERROR: Binary data in COG message]`
+- **COG log windows**: a binary DEBUG value containing the byte `$1B` no longer replaces the
+  whole message with `[DEBUG_END_SESSION]`
+
 ## v1.1.1 (2026-09-30)
 
 A P2 program that reads the keyboard or mouse from a debug display gets its answer.

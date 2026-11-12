@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Context } from '../../utils/context';
 import { ensureDirExists, getFormattedDateTime, getFormattedDateTimeISO } from '../../utils/files';
+import { endSessionEscIndex, formatEndSessionLine } from './endSessionSentinel';
 
 // Developer console tracing for the headless log's own plumbing. Off for releases (G7).
 // The headless RUN NARRATIVE (log path, end-marker hit, log closed) is NOT gated — in
@@ -52,6 +53,8 @@ export class HeadlessFileLogger {
   // Safety bound on an unterminated line — the idle timer cannot rescue a stream that never
   // pauses, so this is the only backstop against unbounded accumulation (see logMessage).
   private static readonly MAX_UNTERMINATED_LINE_BYTES = 64 * 1024;
+  // Bounded look at a line's head for DEBUG_END_SESSION (longest real form is 29 bytes).
+  private static readonly END_SESSION_HEAD_CHARS = 64;
 
   // Callback for end-marker detection
   private onEndMarkerDetected: (() => void) | null = null;
@@ -228,8 +231,16 @@ export class HeadlessFileLogger {
       // Extract line including the \n
       const line = this.lineAccumulator.substring(0, newlineIdx + 1);
       this.lineAccumulator = this.lineAccumulator.substring(newlineIdx + 1);
+      if (this.endSessionIfSentinel(line)) {
+        return;
+      }
       this.writeToLog(line);
       newlineIdx = this.lineAccumulator.indexOf('\n');
+    }
+
+    // A sentinel with no CR LF after it ends the run now, not after the idle flush.
+    if (this.endSessionIfSentinel(this.lineAccumulator)) {
+      return;
     }
 
     // HARD BOUND: a stream that never presents a line terminator must not accumulate forever.
@@ -243,6 +254,42 @@ export class HeadlessFileLogger {
     if (this.lineAccumulator.length > 0) {
       this.lineFlushTimer = setTimeout(() => this.flushLineAccumulator(), this.LINE_FLUSH_TIMEOUT_MS);
     }
+  }
+
+  /**
+   * DEBUG(DEBUG_END_SESSION) ends the run with no flag needed (PNut parity,
+   * DebugUnit.pas:196): the line "CogN  [ts  ]ESC", with or without CR LF after it.
+   * Writes the line as "CogN  <END_SESSION>" and fires the end callback.
+   * Returns true when the run is ending, so the caller stops processing.
+   */
+  private endSessionIfSentinel(line: string): boolean {
+    // The sentinel sits at the START of the line, and its longest form
+    // ("CogN  $XXXX_XXXX_XXXX_XXXX  " + ESC) is 29 bytes. Look at a bounded head only:
+    // this runs on the line accumulator for every chunk, and converting the whole
+    // accumulator each time is quadratic on an unterminated stream (stream-shape I1).
+    if (line.charCodeAt(0) !== 0x43 /* 'C' */) {
+      return false;
+    }
+    const head = line.length > HeadlessFileLogger.END_SESSION_HEAD_CHARS
+      ? line.substring(0, HeadlessFileLogger.END_SESSION_HEAD_CHARS)
+      : line;
+    // utf8, not latin1: latin1 would fold a character such as U+011B onto byte 0x1B.
+    const bytes = new Uint8Array(Buffer.from(head, 'utf8'));
+    if (endSessionEscIndex(bytes) < 0) {
+      return false;
+    }
+    this.lineAccumulator = '';
+    if (this.lineFlushTimer) {
+      clearTimeout(this.lineFlushTimer);
+      this.lineFlushTimer = null;
+    }
+    this.writeToLog(`${formatEndSessionLine(bytes)}\r\n`);
+    console.log('[HEADLESS] DEBUG_END_SESSION received');
+    this.logSystem('DEBUG_END_SESSION received - initiating shutdown');
+    if (this.onEndMarkerDetected) {
+      this.onEndMarkerDetected();
+    }
+    return true;
   }
 
   /**

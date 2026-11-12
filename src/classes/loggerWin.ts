@@ -10,7 +10,7 @@ import * as path from 'path';
 import { ensureDirExists, getFormattedDateTime, getFormattedDateTimeISO } from '../utils/files';
 import { WindowPlacer, PlacementSlot } from '../utils/windowPlacer';
 import { SharedMessageType, ExtractedMessage } from './shared/sharedMessagePool';
-import { isEndSessionSentinel } from './shared/endSessionSentinel';
+import { isEndSessionSentinel, formatEndSessionLine } from './shared/endSessionSentinel';
 import { PerformanceMonitor } from './shared/performanceMonitor';
 
 // Console logging control for debugging
@@ -1157,7 +1157,14 @@ export class LoggerWindow extends DebugWindowBase {
       } else if (actualData instanceof Uint8Array) {
         // DEFENSIVE: COG messages should be text - verify before decoding
         const cogClassification = this.classifyData(actualData);
-        if (cogClassification === 'ascii') {
+        if (isEndSessionSentinel(actualData)) {
+          // DEBUG(DEBUG_END_SESSION): show the line as sent, with the ESC as a visible
+          // tag — "Cog0  <END_SESSION>" — never as a hex dump of "binary" data.
+          // Terminated like every other COG line: writeToLog holds text until it sees '\n'.
+          const endMsg = `${formatEndSessionLine(actualData)}\r\n`;
+          this.appendMessage(endMsg, 'cog-message');
+          this.writeToLog(endMsg);
+        } else if (cogClassification === 'ascii') {
           const message = new TextDecoder().decode(actualData);
           this.appendMessage(message, 'cog-message');
           this.writeToLog(message);
@@ -1167,21 +1174,10 @@ export class LoggerWindow extends DebugWindowBase {
           this.appendMessage(formatted, 'cog-message');
           this.writeToLog(formatted);
         } else {
-          // Check for a DEBUG_END_SESSION sentinel before treating as routing
-          // error. The only trusted signal is a 0x1B immediately preceded by a
-          // CR LF pair (0x0D 0x0A 0x1B). A bare "contains 0x1B" scan false-
-          // matches binary payloads carrying a 0x1B byte (e.g. sample value
-          // $031B), wrongly replacing the carrying message (see #32).
-          if (isEndSessionSentinel(actualData)) {
-            const endMsg = '[DEBUG_END_SESSION]';
-            this.appendMessage(endMsg, 'cog-message');
-            this.writeToLog(endMsg);
-          } else {
-            // Binary data misclassified as COG - display defensively with hex fallback
-            const hexFallback = this.formatBinaryAsHexFallback(actualData);
-            this.appendMessage(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`, 'binary-message');
-            this.writeToLog(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`);
-          }
+          // Binary data misclassified as COG - display defensively with hex fallback
+          const hexFallback = this.formatBinaryAsHexFallback(actualData);
+          this.appendMessage(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`, 'binary-message');
+          this.writeToLog(`[ROUTING ERROR: Binary data in COG message]\n${hexFallback}`);
         }
       }
     }

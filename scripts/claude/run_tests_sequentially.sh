@@ -128,6 +128,8 @@ run_test "tests/p2DebugHeader.test.ts"
 run_test "tests/exitCodes.test.ts"
 run_test "tests/headedExitDrain.test.ts"
 run_test "tests/endSessionSentinel.test.ts"
+run_test "tests/debugEndSessionWire.test.ts"
+run_test "tests/loggerCOGWinEndSession.test.ts"
 # §5a sweep (2026-06-01): of 110 unregistered tests/*.test.ts, only these 7 still
 # pass — the other 103 fail at suite-load (import refactored-away/renamed modules,
 # e.g. shared/serialReceiver, shared/circularBuffer). Those are stale-test debt,

@@ -503,6 +503,10 @@ pnut-term-ts -n                                   # list connected devices
 pnut-term-ts --headless -r test.bin --end-marker  # headless, exit on end-session marker
 ```
 
+`debug(DEBUG_END_SESSION)` always ends the session and closes the application, in every
+mode and with no option; the log shows it as `Cog0  <END_SESSION>`. The options above add a
+*text* marker on top of that.
+
 `-r` and `-f` are mutually exclusive; `--timeout` requires `--headless`; `--end-marker`
 requires `--headless` or `--exit-on-end-session`. A bad command line stops before anything
 runs and exits with code `2`; option-value and flag-combination problems are all reported
@@ -604,4 +608,4 @@ states which build produced it. Attach the relevant log when reporting an issue.
 
 ---
 
-*Version 1.1.1 — © 2024–2026 Iron Sheep Productions LLC, MIT License*
+*Version 1.1.2 — © 2024–2026 Iron Sheep Productions LLC, MIT License*

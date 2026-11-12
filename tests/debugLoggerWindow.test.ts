@@ -515,4 +515,42 @@ describe('LoggerWindow', () => {
       expect(debugLogger['lineBuffer'].length).toBeGreaterThan(0);
     });
   });
+
+  // DEBUG(DEBUG_END_SESSION) sends "Cog0  " ESC CR LF. Before v1.1.2 the ESC made the
+  // line "binary", the sentinel test (which wanted CR LF BEFORE the ESC) missed it, and
+  // the line was hex-dumped as "[ROUTING ERROR: Binary data in COG message]".
+  describe('DEBUG_END_SESSION line in the log', () => {
+    beforeEach(() => {
+      debugLogger = LoggerWindow.getInstance(mockContext);
+      debugLogger['logFile'] = mockWriteStream;
+      debugLogger['logFilePath'] = '/tmp/test-logs/debug_test.log';
+      debugLogger['logFileReady'] = true;
+    });
+
+    function written(): string {
+      debugLogger['flushWriteBuffer']();
+      return mockWriteStream.write.mock.calls.map((c: any[]) => String(c[0])).join('');
+    }
+
+    it.each([
+      ['with CR LF', 'Cog0  \x1b\r\n', 'Cog0  <END_SESSION>'],
+      ['without CR LF', 'Cog0  \x1b', 'Cog0  <END_SESSION>'],
+      ['with timestamp', 'Cog0  $0000_0000_1234_ABCD  \x1b\r\n', 'Cog0  $0000_0000_1234_ABCD  <END_SESSION>']
+    ])('%s: shown as the line as sent with <END_SESSION>, not a hex dump', (_n, wire, shown) => {
+      mockWriteStream.write.mockClear();
+      debugLogger.processTypedMessage(SharedMessageType.COG0_MESSAGE, Uint8Array.from(Buffer.from(wire, 'latin1')));
+      const out = written();
+      expect(out).toContain(shown);
+      expect(out).not.toContain('ROUTING ERROR');
+    });
+
+    it('NEGATIVE: a 0x1B inside binary DEBUG data is still the hex fallback, not <END_SESSION>', () => {
+      mockWriteStream.write.mockClear();
+      const wire = "Cog0  heard '" + '\x10\x03\x1b\x03\x35\x03' + "(none)'\r\n";
+      debugLogger.processTypedMessage(SharedMessageType.COG0_MESSAGE, Uint8Array.from(Buffer.from(wire, 'latin1')));
+      const out = written();
+      expect(out).not.toContain('<END_SESSION>');
+      expect(out).toContain('ROUTING ERROR');
+    });
+  });
 });

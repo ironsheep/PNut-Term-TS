@@ -1,6 +1,6 @@
 # PNut-Term-TS User Guide
 
-*Version 1.1.1*
+*Version 1.1.2*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)
@@ -95,7 +95,9 @@ pnut-term-ts -r gen.bin --exit-on-end-session -p P9cektn7
 ```
 
 On the end-session marker the app **drains in-flight window SAVEs and logs** before
-exiting, so queued output is never cut off.
+exiting, so queued output is never cut off. `--exit-on-end-session` adds the text marker;
+`debug(DEBUG_END_SESSION)` ends the run in every mode, with or without it (see
+[Ending a session from your program](#ending-a-session-from-your-program)).
 
 ### 4. IDE Integration Mode
 A minimal UI intended to be driven by an editor (e.g. the VS Code Spin2 extension).
@@ -118,8 +120,9 @@ pnut-term-ts --headless -r test.bin -p P9cektn7 --end-marker          # exit on 
 pnut-term-ts --headless -r test.bin -p P9cektn7 --timeout 60          # exit after 60s
 ```
 
-Headless runs terminate on a signal (Ctrl+C / SIGTERM), a `--timeout`, or an
-`--end-marker` (see [Command-Line Reference](#command-line-reference)).
+Headless runs terminate on a signal (Ctrl+C / SIGTERM), a `--timeout`, an
+`--end-marker`, or `debug(DEBUG_END_SESSION)`, which needs no option (see
+[Command-Line Reference](#command-line-reference)).
 
 ---
 
@@ -528,11 +531,20 @@ pnut-term-ts --headless -r test.bin --timeout 60 # headless, exit after 60s
 pnut-term-ts -r gen.bin --exit-on-end-session    # GUI batch capture, auto-exit
 ```
 
-### End-session markers
-By default the end-session condition matches either `END_SESSION` or
-`DEBUG_END_SESSION` (a case-sensitive substring match). `--end-marker "PHRASE"`
-substitutes your own phrase. Markers apply to headless mode (`--headless`) and to GUI
-batch mode (`--exit-on-end-session`).
+### Ending a session from your program
+There are two ways for a program to end the run.
+
+**The `DEBUG_END_SESSION` constant (always on).** `debug(DEBUG_END_SESSION)` (Spin2 v52 or
+later) sends the cog prefix and the end-of-session byte. PNut-Term-TS recognises it in every
+mode, with no option needed, and shuts the whole application down: in-flight window SAVEs
+and logs are written first, then every window closes and the app exits with code 0.
+Headless runs exit the same way. The log shows the line as `Cog0  <END_SESSION>`.
+
+**A text marker (needs an option).** With `--headless --end-marker`, or with
+`--exit-on-end-session`, the run also ends when a marker phrase appears in the output. By
+default the phrase is `END_SESSION` or `DEBUG_END_SESSION` (a case-sensitive substring
+match), so `debug("DEBUG_END_SESSION")` works too. `--end-marker "PHRASE"` substitutes your
+own phrase. Without one of those options, text is never treated as a marker.
 
 ### Constraints
 - `-r` and `-f` are mutually exclusive.

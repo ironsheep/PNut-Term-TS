@@ -554,11 +554,10 @@ export class WindowRouter extends EventEmitter {
     ) {
       this.logger.debug('ROUTE', `Routing Cog/INIT message: ${text.substring(0, 50)}...`);
 
-      // Check for DEBUG_END_SESSION sentinel in COG message data. The only
-      // trusted signal is a 0x1B immediately preceded by a CR LF pair (the
-      // sequence 0x0D 0x0A 0x1B). A bare "contains 0x1B" scan false-triggers on
-      // binary DEBUG payloads (e.g. sample value $031B -> 1B 03), so use the
-      // boundary-aligned check (see endSessionSentinel.ts).
+      // DEBUG_END_SESSION: a COG line whose whole body is the ESC sent by
+      // DEBUG(DEBUG_END_SESSION) — "CogN  [ts  ]ESC" with or without CR LF after it.
+      // Always honored, no flag needed (PNut parity). A 0x1B inside binary DEBUG data
+      // never matches (see endSessionSentinel.ts).
       if (message.data instanceof Uint8Array && isEndSessionSentinel(message.data)) {
         this.logConsoleMessage(`[ROUTER] DEBUG_END_SESSION sentinel (0x1B) detected in COG${cogId ?? '?'} message`);
         this.emit('debugEndSession', { cogId: cogId ?? 0, timestamp: Date.now() });

@@ -288,21 +288,15 @@ export class MainWindow {
       this.handleP2SystemReboot(eventData);
     });
 
-    // Listen for end-of-session (0x1B DEBUG_END_SESSION sentinel, or a
-    // configured end-marker phrase in headed batch mode).
+    // Listen for end-of-session: the DEBUG_END_SESSION sentinel line (always), or a
+    // configured end-marker phrase (only under --exit-on-end-session; the router gates it).
+    // Either way the WHOLE application shuts down: drain in-flight saves/logs, close every
+    // display, close the port, exit. PNut ends the session on the 27 byte with no option
+    // (DebugUnit.pas:196, FormClose :88-93). Closing only the port and leaving the
+    // windows up has no value (Stephen, 2026-11-12). gracefulShutdown is idempotent.
     this.windowRouter.on('debugEndSession', (eventData: { cogId: number; timestamp: number }) => {
-      if (this.context.runEnvironment.exitOnEndSession) {
-        // Batch mode: drain in-flight saves/logs, then exit the whole app with
-        // the resolved exit code. gracefulShutdown is idempotent.
-        this.logConsoleMessage(
-          `[SESSION] end-session from COG${eventData.cogId} + --exit-on-end-session → graceful shutdown (draining first)`
-        );
-        void this.gracefulShutdown('end-session');
-      } else {
-        // Default interactive behavior: just disconnect the serial port.
-        this.logConsoleMessage(`[SESSION] DEBUG_END_SESSION received from COG${eventData.cogId} - disconnecting serial port`);
-        this.disconnectSerialPort();
-      }
+      this.logConsoleMessage(`[SESSION] end-session from COG${eventData.cogId} → graceful shutdown (draining first)`);
+      void this.gracefulShutdown('end-session');
     });
 
     // Fatal DEBUG-display program error (currently: duplicate display name). The condition is
