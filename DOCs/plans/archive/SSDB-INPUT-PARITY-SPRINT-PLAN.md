@@ -1,3 +1,4 @@
+Closed: 2026-11-24 - audit: DOCs/plans/archive/CLOSEOUT-2026-11-24-SSDB-INPUT-PARITY.md
 # SSDB Input-Command Parity — Sprint Plan
 
 **Goal:** 100% Pascal parity for every mouse and keyboard command in the single-step debugger.

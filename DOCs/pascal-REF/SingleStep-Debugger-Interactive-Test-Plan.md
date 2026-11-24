@@ -6,6 +6,10 @@
 > be re-run in full for v1.0.1**: the address-model change touches the Phase-2 window
 > request, which is the sprint's largest regression exposure.
 >
+> **v2 CERTIFIED on hardware, 2026-11-24** (Stephen: "yes all run and certified"), covering
+> Tests 0–14 and Phase D. It is recorded in each item's PNut-term-ts row and in the summary
+> matrix. The historical `**Status:**` lines are left as they were.
+>
 > **Purpose**: Validate the single-step debugger against real P2 hardware. Tests run
 > simplest → most complex. Each test names the P2 program to load, the keys/clicks to
 > press, and what you should see.
@@ -171,7 +175,7 @@ Tests 1–2 while that file is still loaded.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test01_basic_spin.spin2`
 
@@ -210,7 +214,7 @@ ON HW TEST: PASS w/Version 0.9.81! (2026-06-23)
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** keep `test01_basic_spin.spin2` loaded (from Test 0).
 
@@ -251,7 +255,7 @@ Logs confirm 1380 breaks at ~12 Hz with no >250 ms gap (audit 2026-06-24).
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** keep `test01` loaded.
 
@@ -296,7 +300,7 @@ ON HW TEST: pass v0.9.83
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): PASS
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 > **▶ Requires the recompiled `test03_pasm_regs.spin2`** (program fixed to use low
 > registers). `pnut-ts -d test03_pasm_regs.spin2`, then download the new `.bin`.
@@ -345,7 +349,7 @@ low registers (`count`/`limit`) as you step; R-key and click both reset the list
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): all pass except: windows emulator, macOS, shift+mousewheel doesn't work. ⚠ **ENVIRONMENTAL — not a PNut result.** Run under a Windows emulator on macOS, where macOS turns Shift+scroll into a **horizontal** scroll; the guest receives `WM_MOUSEHWHEEL`, which Delphi's `OnMouseWheel` does not handle, so PNut correctly does nothing. **PNut-term-ts folds whichever axis carries the motion (`DebuggerInteraction.ts:110`) and will likely PASS this on the same machine — that is not a parity difference, do not log it as one.** Re-test on native Windows to get a real reading. Discriminator: **Shift+PageUp** goes through `FormKeyDown`, which sets `KeyShift` before dispatch — if that pages by `$10000` while Shift+wheel does nothing, the fault is the wheel axis, not Shift.
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** keep `test03` loaded.
 
@@ -419,7 +423,7 @@ ON HW TEST: v0.9.86: right-click WORKS ✅ (root cause: macOS/Electron delivers 
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test01_basic_spin.spin2` — *or do this test right after Test 2, while
 `test01` is still loaded* (see Suggested load order).
@@ -479,7 +483,7 @@ ON HW TEST: v0.9.86 - PASS
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test06_flags_skip.spin2`
 
@@ -532,7 +536,7 @@ ON HW TEST: v0.9.86 PASS
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test07_stack_ptr.spin2`
 
@@ -575,7 +579,7 @@ ON HW TEST: v0.9.86 PASS
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference):  pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test08_hub_writes.spin2`
 
@@ -627,7 +631,7 @@ ON HW TEST: v0.9.87 pass timeout might still be too short? but it does appear to
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test09_pins.spin2`
 
@@ -662,7 +666,7 @@ note added to steps 1–2 above. No code change.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): left/right click are momentary - NCO value reappears after click without stepping 📌 **Reference behavior noted — compare on the PNut-term-ts pass.** PNut repopulates the smart-pin list immediately; ours clears the list and refills from the next message. If ours stays empty until you step, that is a parity gap to raise.
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 > **▶ Requires the recompiled `test10_smart_pin.spin2`** (NCO fixed to raise IN every poll).
 > `pnut-ts -d test10_smart_pin.spin2`, then download the new `.bin`.
@@ -739,7 +743,7 @@ more dynamic if a bigger visual swing is wanted.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test11_interrupts.spin2`
 
@@ -782,7 +786,7 @@ feed). test11 passes again on real HW.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): ⚠ **ENVIRONMENTAL** (Windows modal drag loop blocks the message pump; emulator-hosted). The test itself PASSED — see the note. on macOS windows Emulator - drag of covering window unblocked the cog 0 it started running again. But, message did appear while dragging. once running started the message was gone. Independent debug is working - each window does what it should when interacted with.
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** `test12_multicog.spin2`
 
@@ -846,7 +850,7 @@ acceptance gate MET.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** keep `test11_interrupts.spin2` loaded (from Test 11) — it uses the CT1 event.
 
@@ -931,7 +935,7 @@ already correct — steps 1/6/7 "diff text" was correct behavior)
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass, off window message is not cleared it returns to showing "Clock frequency is 200,000,000 Hz" ✅ **CONFIRMED REFERENCE BEHAVIOR — and it found a real defect on our side.** `DebuggerUnit.pas:1913-1915` sets an explicit off-form idle hint; `FormMouseMoveTimeout` never cleared anything. Part A §A.5 said it did — the misreading had propagated into our code (we blanked the bar), the manual source and this plan. Part A corrected, F19 recorded, code fixed and red-proofed 2026-09-08. **Re-check on the PNut-term-ts pass: the bar must read the clock frequency, not go blank, whenever the pointer is off the window — including before you first touch it.**
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 **▶ Load:** any program — run this **throughout** Phases B and C by hovering as you go.
 
@@ -1000,7 +1004,7 @@ heatmap). Note the 5-digit hub address before each notch.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): macOS windows emulator - shift anything no response ⚠ **ENVIRONMENTAL — not a PNut result.** Run under a Windows emulator on macOS, where macOS turns Shift+scroll into a **horizontal** scroll; the guest receives `WM_MOUSEHWHEEL`, which Delphi's `OnMouseWheel` does not handle, so PNut correctly does nothing. **PNut-term-ts folds whichever axis carries the motion (`DebuggerInteraction.ts:110`) and will likely PASS this on the same machine — that is not a parity difference, do not log it as one.** Re-test on native Windows to get a real reading. Discriminator: **Shift+PageUp** goes through `FormKeyDown`, which sets `KeyShift` before dispatch — if that pages by `$10000` while Shift+wheel does nothing, the fault is the wheel axis, not Shift.
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1019,7 +1023,7 @@ heatmap). Note the 5-digit hub address before each notch.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1033,7 +1037,7 @@ heatmap). Note the 5-digit hub address before each notch.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass, but it's not wheel down - it's scroll up or down changes by that digit
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 The point of this item is that the wheel edits **the digit under the cursor** — *both*
 directions act, on that digit alone. (Reworded 2026-09-08: the steps previously said only
@@ -1052,7 +1056,7 @@ directions act, on that digit alone. (Reworded 2026-09-08: the steps previously 
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1066,7 +1070,7 @@ directions act, on that digit alone. (Reworded 2026-09-08: the steps previously 
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1082,7 +1086,7 @@ Run in cog space first (PC below `$400`).
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass but no shift... same issue ⚠ **ENVIRONMENTAL — not a PNut result.** Run under a Windows emulator on macOS, where macOS turns Shift+scroll into a **horizontal** scroll; the guest receives `WM_MOUSEHWHEEL`, which Delphi's `OnMouseWheel` does not handle, so PNut correctly does nothing. **PNut-term-ts folds whichever axis carries the motion (`DebuggerInteraction.ts:110`) and will likely PASS this on the same machine — that is not a parity difference, do not log it as one.** Re-test on native Windows to get a real reading. Discriminator: **Shift+PageUp** goes through `FormKeyDown`, which sets `KeyShift` before dispatch — if that pages by `$10000` while Shift+wheel does nothing, the fault is the wheel axis, not Shift.
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1100,7 +1104,7 @@ Run in cog space first (PC below `$400`).
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): pass
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1116,7 +1120,7 @@ they are the discriminating form of the old step 8.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference):
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 ### D9: Right-click BREAK, and the hub-mode breakpoint refusal (Part A §A.2/§A.3)
 
@@ -1124,7 +1128,7 @@ they are the discriminating form of the old step 8.
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): confusing instructions... not sure how to satisfy
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1155,7 +1159,7 @@ Step through the short setup block first (**SPACE** ×6) until execution parks i
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): same instructions unclear
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1170,7 +1174,7 @@ Step through the short setup block first (**SPACE** ×6) until execution parks i
 
 **Run 2026-09-07 — tick to pass, notes after the colon:**
 - [ ] **PNut** (Windows, v55 reference): control sequences dont' appear to do anything... ⚠ **HELD — do not correct Part A on this yet.** The source *supports* Part A: `DebuggerUnit.pas:1072-1086` carries `case 3/4/11,12` dispatching on the byte value, and Windows delivers Ctrl+C to `OnKeyPress` as `WM_CHAR $03`. The same emulator is already demonstrably eating Shift (see Test 4 / D1 / D6), so the environment is the prime suspect. **Two discriminators, ~1 min:** (a) press **Ctrl+M** — Pascal maps it to `#13`, the same code as ENTER, so it should start repeat mode; if it does, Ctrl *is* reaching PNut and this failure is narrower; if it does nothing while plain ENTER works, the emulator is swallowing Ctrl and **this item is void, not a finding**. (b) **Shift+PageUp** as above. ⚠ If you try Ctrl+K/Ctrl+L, judge only *whether it moves*, never the page size: `FormKeyDown` exits before `KeyShift := Shift` for letter-produced codes, so PNut pages on a **stale** shift state (documented divergence #2, re-confirmed in source 2026-09-08).
-- [ ] **PNut-term-ts** (v1.0.6):
+- [x] **PNut-term-ts**: pass. Certified on hardware by Stephen, 2026-11-24 ("yes all run and certified"); the build and per-step notes were not recorded.
 
 | Step | Action | Expected Display |
 |------|--------|-----------------|
@@ -1196,34 +1200,38 @@ cosmetic" are not dispositions.
 
 | Test | Phase | Feature Area | Status | PNut | PNut-term-ts | Load file |
 |------|-------|-------------|--------|------|---------|-----------|
-| 0 | A | Visual verification (no interaction) | ✅ v0.9.81 | ✅ |  | `test01_basic_spin.spin2` |
-| 1 | B | Basic connection, single step | ✅ v0.9.82 | ✅ |  | `test01` (keep loaded) |
-| 2 | B | Repeat mode, throttling | ✅ v0.9.83 | ✅ |  | `test01` (keep loaded) |
-| 3 | B | Register watch, reset | ✅ v0.9.97 | ✅ |  | `test03_pasm_regs.spin2` |
-| 4 | B | Disassembly navigation | ✅ v0.9.86 | ✅* |  | `test03` (keep loaded) |
-| 5 | B | Button behavior | ✅ v0.9.86 | ✅ |  | `test01` (reuse — do with Tests 1–2) |
-| 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 | ✅ |  | `test06_flags_skip.spin2` |
-| 7 | B | SFR, stack, pointers | ✅ v0.9.86 | ✅ |  | `test07_stack_ptr.spin2` |
-| 8 | B | Hub memory viewer | ✅ v0.9.87 | ✅ |  | `test08_hub_writes.spin2` |
-| 9 | B | Pin registers, status | ✅ v0.9.87 | ✅ |  | `test09_pins.spin2` |
-| 10 | C | Smart pin watch | ✅ v0.9.97 | ✅📌 |  | `test10_smart_pin.spin2` |
-| 11 | C | Interrupts, exec mode | ✅ v0.9.94 | ✅ |  | `test11_interrupts.spin2` |
-| 12 | C | Multi-COG | ✅ v0.9.95 | ✅* |  | `test12_multicog.spin2` |
-| 13 | C | Event breakpoints | ✅ v0.9.97 | ✅ |  | `test11` (keep loaded) |
-| 14 | B/C | Hint bar | ✅ v0.9.97 | ⚠️F19 |  | Any (run throughout) |
-| D1 | D | Hub-data wheel magnitudes | ⬜ v1.0.1 | —env |  | `test08_hub_writes.spin2` |
-| D2 | D | Heat-map excluded from the wheel | ⬜ v1.0.1 | ✅ |  | `test08` (keep loaded) |
-| D3 | D | Hub address digits | ⬜ v1.0.1 | ✅† |  | `test08` (keep loaded) |
-| D4 | D | Hub ASCII column click | ⬜ v1.0.1 | ✅ |  | `test08` (keep loaded) |
-| D5 | D | Hub heat-map click | ⬜ v1.0.1 | ✅ |  | `test08` (keep loaded) |
-| D6 | D | Disassembly wheel: steps, coupling, clamp | ⬜ v1.0.1 | ✅* |  | `test03_pasm_regs.spin2` |
-| D7 | D | dmPC does not drag the HUB pane | ⬜ v1.0.1 | ✅ |  | `test03` (keep loaded) |
-| D8 | D | REG/LUT centering and clamp (Test 4 8–8c) | ⬜ v1.0.1 | ✅‡ |  | `test03` (keep loaded) |
-| D9 | D | Right-click BREAK; hub breakpoint refusal | ⬜ v1.0.1 | † |  | `test08` (keep loaded) |
-| D10 | D | SFR/stack routing into hub mode | ⬜ v1.0.1 | † |  | `testD10_sfr_stack_routing.spin2` |
-| D11 | D | Ctrl combinations and per-row hints | ⬜ v1.0.1 | ⏸ |  | `test11_interrupts.spin2` |
+| 0 | A | Visual verification (no interaction) | ✅ v0.9.81 | ✅ | ✅§ | `test01_basic_spin.spin2` |
+| 1 | B | Basic connection, single step | ✅ v0.9.82 | ✅ | ✅§ | `test01` (keep loaded) |
+| 2 | B | Repeat mode, throttling | ✅ v0.9.83 | ✅ | ✅§ | `test01` (keep loaded) |
+| 3 | B | Register watch, reset | ✅ v0.9.97 | ✅ | ✅§ | `test03_pasm_regs.spin2` |
+| 4 | B | Disassembly navigation | ✅ v0.9.86 | ✅* | ✅§ | `test03` (keep loaded) |
+| 5 | B | Button behavior | ✅ v0.9.86 | ✅ | ✅§ | `test01` (reuse — do with Tests 1–2) |
+| 6 | B | Header display (C/Z/SKIP/CT) | ✅ v0.9.86 | ✅ | ✅§ | `test06_flags_skip.spin2` |
+| 7 | B | SFR, stack, pointers | ✅ v0.9.86 | ✅ | ✅§ | `test07_stack_ptr.spin2` |
+| 8 | B | Hub memory viewer | ✅ v0.9.87 | ✅ | ✅§ | `test08_hub_writes.spin2` |
+| 9 | B | Pin registers, status | ✅ v0.9.87 | ✅ | ✅§ | `test09_pins.spin2` |
+| 10 | C | Smart pin watch | ✅ v0.9.97 | ✅📌 | ✅§ | `test10_smart_pin.spin2` |
+| 11 | C | Interrupts, exec mode | ✅ v0.9.94 | ✅ | ✅§ | `test11_interrupts.spin2` |
+| 12 | C | Multi-COG | ✅ v0.9.95 | ✅* | ✅§ | `test12_multicog.spin2` |
+| 13 | C | Event breakpoints | ✅ v0.9.97 | ✅ | ✅§ | `test11` (keep loaded) |
+| 14 | B/C | Hint bar | ✅ v0.9.97 | ⚠️F19 | ✅§ | Any (run throughout) |
+| D1 | D | Hub-data wheel magnitudes | ⬜ v1.0.1 | —env | ✅§ | `test08_hub_writes.spin2` |
+| D2 | D | Heat-map excluded from the wheel | ⬜ v1.0.1 | ✅ | ✅§ | `test08` (keep loaded) |
+| D3 | D | Hub address digits | ⬜ v1.0.1 | ✅† | ✅§ | `test08` (keep loaded) |
+| D4 | D | Hub ASCII column click | ⬜ v1.0.1 | ✅ | ✅§ | `test08` (keep loaded) |
+| D5 | D | Hub heat-map click | ⬜ v1.0.1 | ✅ | ✅§ | `test08` (keep loaded) |
+| D6 | D | Disassembly wheel: steps, coupling, clamp | ⬜ v1.0.1 | ✅* | ✅§ | `test03_pasm_regs.spin2` |
+| D7 | D | dmPC does not drag the HUB pane | ⬜ v1.0.1 | ✅ | ✅§ | `test03` (keep loaded) |
+| D8 | D | REG/LUT centering and clamp (Test 4 8–8c) | ⬜ v1.0.1 | ✅‡ | ✅§ | `test03` (keep loaded) |
+| D9 | D | Right-click BREAK; hub breakpoint refusal | ⬜ v1.0.1 | † | ✅§ | `test08` (keep loaded) |
+| D10 | D | SFR/stack routing into hub mode | ⬜ v1.0.1 | † | ✅§ | `testD10_sfr_stack_routing.spin2` |
+| D11 | D | Ctrl combinations and per-row hints | ⬜ v1.0.1 | ⏸ | ✅§ | `test11_interrupts.spin2` |
 
 **PNut column:** ✅ pass · `*` shift-modifier steps ENVIRONMENTAL (macOS-hosted emulator turns Shift+scroll horizontal — re-test native) · `†` step defect in THIS document, fixed 2026-09-08 · `‡` covered via Test 4 · 📌 reference behavior to compare on the PNut-term-ts pass · ⚠️F19 found a real defect on our side (hint-bar idle text) · ⏸ HELD pending the Ctrl+M / Shift+PageUp discriminators.
+
+**PNut-term-ts column:** ✅§ certified on hardware by Stephen on 2026-11-24 ("yes all run and
+certified"). That covers Tests 0–14 in full and Phase D1–D11, which is the v2 gate. The build
+tested and per-step observations were not recorded.
 
 ---
 

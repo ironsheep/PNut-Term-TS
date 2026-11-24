@@ -12,10 +12,10 @@ import {
   STALL_CMD, CHAR_WIDTH_PX, HALF_ROW_PX, PTR_CENTER,
   HUB_MAP_WIDTH, HUB_MAP_HEIGHT, HUB_SUB_BLOCK_SIZE, HUB_SUB_BLOCKS,
   BITMAP_WIDTH_PX, BITMAP_HEIGHT_PX, BREAK_ADDR, BREAK_EVENT,
-  BREAK_MAIN, BREAK_INIT, BREAK_DEBUG, PANEL, EVENT_NAMES
+  BREAK_MAIN, BREAK_INIT, BREAK_DEBUG, PANEL, EVENT_NAMES, DIS_LINE_IDEAL
 } from '../src/classes/debugger/shared/constants';
 import { DisMode } from '../src/classes/debugger/renderer/DebuggerState';
-import { idleHintText } from '../src/classes/debugger/renderer/DebuggerRenderer';
+import { DebuggerRenderer, idleHintText } from '../src/classes/debugger/renderer/DebuggerRenderer';
 
 /** Pull a DOM listener the interaction registered on the (mock) canvas. */
 function listener(h: ReturnType<typeof makeInteraction>, type: string): (e: any) => void {
@@ -272,13 +272,21 @@ describe('Debugger address model — CogAddr / HubAddr / DisAddr (Part A §A.0, 
     // The trap the three-concept split exists to prevent: dmPC auto-scroll writes
     // the DERIVED top only. If it wrote HubAddr, the HUB data pane would follow
     // program execution — something PNut never does.
+    // Drives the renderer's real auto-scroll; it reads and writes nothing but `state`.
     const h = harness(DisMode.dmPC);
     h.state.hubAddr = 0x0BEEF;
-    h.state.disAddr = 0x00800;               // dmPC scroll position, hub-space PC
+    const autoScroll = () =>
+      (DebuggerRenderer.prototype as any).updateDisTopAddr.call({ state: h.state });
+    const stepTo = (pc: number) => { h.state.message[MSG.IRET] = pc; autoScroll(); };
+
+    stepTo(0x00900);                          // far jump into hub space: snap to the ideal line
+    expect(h.state.disAddr).toBe(0x00900 - DIS_LINE_IDEAL * 4);
     expect(h.state.hubAddr).toBe(0x0BEEF);
-    h.state.disAddr = 0x00900;               // as the auto-scroll advances it
-    expect(h.state.hubAddr).toBe(0x0BEEF);
-    expect(h.state.disAddr).toBe(0x00900);
+
+    const snapped = h.state.disAddr;
+    for (let i = 1; i <= 40; i++) stepTo(0x00900 + i * 4);   // walk the PC down and off the window
+    expect(h.state.disAddr).not.toBe(snapped);               // the displayed top followed the PC
+    expect(h.state.hubAddr).toBe(0x0BEEF);                   // the HUB pane did not
   });
 
   it('leaving dmPC by wheeling seeds the new lock from the address ON SCREEN', () => {
@@ -396,7 +404,7 @@ describe('Debugger address model — the Phase-2 window request follows what is 
       s.hubAddr = 0x0BEEF;                    // hub pane parked elsewhere
       s.disAddr = 0x008C0;
     });
-    expect(requestedAddr(buf)).not.toBe(0x0BEEF);
+    expect(requestedAddr(buf)).toBe(0x008C0);  // exactly the displayed top
     expect(requestedBytes(buf)).toBe(64);
   });
 
