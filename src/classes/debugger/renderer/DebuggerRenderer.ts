@@ -324,16 +324,22 @@ export class DebuggerRenderer {
   /**
    * Filled rounded rectangle centered at pixel (cx, cy) — the rim-less
    * SmoothShape (thick=0) Pascal uses for the pointer center-byte highlight
-   * (DebuggerUnit.pas:2254-2261). No brightened rim, fully opaque.
+   * (DebuggerUnit.pas:2254-2261) and the disassembly PC bar, SKIP band and
+   * breakpoint highlight (:1522-1535). No brightened rim; `opacity` is
+   * SmoothShape's 0..255 opacity byte.
    */
   private fillRoundedPx(
-    cx: number, cy: number, w: number, h: number, r: number, color: number
+    cx: number, cy: number, w: number, h: number, r: number, color: number,
+    opacity: number = 255
   ): void {
     const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = opacity / 255;   // Pascal SmoothShape's opacity byte
     ctx.beginPath();
     ctx.roundRect(cx - w / 2, cy - h / 2, w, h, Math.min(r, w / 2, h / 2));
     ctx.fillStyle = rgb(color);
     ctx.fill();
+    ctx.restore();
   }
 
   /**
@@ -692,7 +698,7 @@ export class DebuggerRenderer {
     for (let i = 0; i < 8; i++) {
       const row = p.t + i * 2; // Pascal SFRt + i shl 1 (DebuggerUnit.pas:1986)
       // Left column (0x1F0..0x1F7)
-      this.drawText(this.ctx, hex(0x1F0 + i, 3), p.l, row, COLOR.cData2);
+      this.drawText(this.ctx, hex(0x1F0 + i, 3), p.l, row, COLOR.cData2, true);
       this.drawText(this.ctx, SFR_NAMES[i], p.l + 4, row, COLOR.cName, true, true);
       this.drawText(this.ctx, hex(this.state.cogImage[0x1F0 + i], 8), p.l + 10, row, COLOR.cData);
       // Right column (0x1F8..0x1FF) — starts col +18 isn't quite right for
@@ -704,7 +710,7 @@ export class DebuggerRenderer {
     // Row 0..7 = 0x1F0..0x1F7 (above); row 8..15 = 0x1F8..0x1FF (below).
     for (let i = 0; i < 8; i++) {
       const row = p.t + (i + 8) * 2; // Pascal SFRt + i shl 1 (DebuggerUnit.pas:1986)
-      this.drawText(this.ctx, hex(0x1F8 + i, 3), p.l, row, COLOR.cData2);
+      this.drawText(this.ctx, hex(0x1F8 + i, 3), p.l, row, COLOR.cData2, true);
       this.drawText(this.ctx, SFR_NAMES[8 + i], p.l + 4, row, COLOR.cName, true, true);
       this.drawText(this.ctx, hex(this.state.cogImage[0x1F8 + i], 8), p.l + 10, row, COLOR.cData);
     }
@@ -1003,19 +1009,29 @@ export class DebuggerRenderer {
     const skipOn = this.state.execMode === 0 && this.state.callDepth === 0;
     const skipPattern = this.state.skipPattern;
 
+    // DebuggerUnit.pas:1484-1532. DisCog picks cog (R-/L-) or hub rows.
+    const disMode = this.state.disMode;
+    const disCog = (disMode === DisMode.dmPC && pc < 0x400) || disMode === DisMode.dmCog;
+    // The highlight shapes (PC bar, SKIP band, breakpoint) share one footprint over
+    // the text: centre x (DISl + 35) * ChrWidth + ChrWidth/2, 42 characters wide,
+    // 7/8 of a character high, corner radius ChrHeight/4 (:1485-1488).
+    const barCx = this.px(p.l + 35) + (CHAR_WIDTH_PX >> 1);
+    const barW = CHAR_WIDTH_PX * 42;
+    const barH = (CHAR_HEIGHT_PX * 7) >> 3;
+    const barR = CHAR_HEIGHT_PX >> 2;
+
     for (let i = 0; i < DIS_LINES; i++) {
-      const row = p.t + i * 2; // Pascal DISt + i shl 1 (DebuggerUnit.pas:1504)
-      // Address representation depends on disMode and value.
+      const row = p.t + i * 2; // Pascal DISt + i shl 1
       let addr: number;
       let addrStr: string;
-      if (this.state.disMode === DisMode.dmHub || top >= 0x400) {
+      if (disCog) {
+        addr = (top + i) & 0x3FF;
+        addrStr = (addr < 0x200 ? 'R' : 'L') + '-' + hex(addr, 3);   // L-200..L-3FF
+      } else {
         addr = (top + i * 4) & 0xFFFFF;
         addrStr = hex(addr, 5);
-      } else {
-        addr = (top + i) & 0x3FF;
-        addrStr = (addr < 0x200 ? 'R-' : 'L-') + hex(addr & 0x1FF, 3);
       }
-      this.drawText(this.ctx, addrStr, p.l + 1, row, COLOR.cData2);
+      this.drawText(this.ctx, addrStr, p.l, row, COLOR.cData2, true);
 
       // Raw instruction word
       let rawValue: number;
@@ -1025,57 +1041,35 @@ export class DebuggerRenderer {
         // Hub-exec code: use disCode if populated, else zero.
         rawValue = this.state.disCode[i] || 0;
       }
-      this.drawText(this.ctx, hex(rawValue, 8), p.l + 8, row, COLOR.cData);
+      this.drawText(this.ctx, hex(rawValue, 8), p.l + 6, row, COLOR.cData);
 
-      // Disassembled text. ROM debug entry/exit ($1F8..$1FF) uses hardcoded
-      // strings (§11.5).
+      // Disassembled text; in cog view $1F8..$1FF are the debug ROM (:1509-1510).
       let disText: string;
-      if (addr >= 0x1F8 && addr <= 0x1FF) {
-        disText = '[ROM] ' + ROM_DEBUG_STRINGS[addr - 0x1F8];
+      if (disCog && addr >= 0x1F8 && addr <= 0x1FF) {
+        disText = '[ROM]        ' + ROM_DEBUG_STRINGS[addr & 0x7];
       } else {
         disText = this.disasm.decode(rawValue, addr).text;
       }
-      // PC line: inverse highlight
-      if (addr === pc) {
-        this.fillRect(this.ctx, p.l + 1, row, p.w - 2, 2, COLOR.cData);
-        this.drawText(this.ctx, addrStr, p.l + 1, row, COLOR.cBox2, true);
-        this.drawText(this.ctx, hex(rawValue, 8), p.l + 8, row, COLOR.cBox2);
-        this.drawText(this.ctx, disText, p.l + 18, row, COLOR.cBox2);
+
+      const hiddenPC = addr < 0x400 && disMode === DisMode.dmHub;
+      const barCy = this.py(row + 1);   // Pascal y := (DISt + 1 + i shl 1) * ChrHeight shr 1
+      if (addr === pc && !hiddenPC) {
+        this.fillRoundedPx(barCx, barCy, barW, barH, barR, COLOR.cData);
+        this.drawText(this.ctx, disText, p.l + 15, row, COLOR.cBox2, true);
       } else {
-        this.drawText(this.ctx, disText, p.l + 18, row, COLOR.cData);
+        this.drawText(this.ctx, disText, p.l + 15, row, COLOR.cData2);
       }
 
-      // SKIP indicator: a translucent band over instructions whose SKIP bit is
-      // set (will be skipped on resume). §6.6 / Pascal L1530-1532
-      //   SmoothShape(x, y, xs, ys shr 1, r, r, 0, cData2, 160)
-      // = a filled translucent rect, full instruction width, HALF the row
-      // height, vertically centered on the row (NOT a thin strikethrough line —
-      // that reads as "crossed out"; Pascal draws a faint highlight band).
-      const hiddenPC = addr < 0x400 && this.state.disMode === DisMode.dmHub;
+      // SKIP: half-height band in cData2 at 160/255 (:1530-1532).
       if (shouldStrikeSkipped(addr, pc, skipOn, skipPattern, hiddenPC)) {
-        this.ctx.save();
-        this.ctx.globalAlpha = 160 / 255;
-        this.ctx.fillStyle = rgb(COLOR.cData2);
-        // Full row = 2 * HALF_ROW_PX tall; band = HALF_ROW_PX tall, centered →
-        // top inset = HALF_ROW_PX / 2.
-        this.ctx.fillRect(
-          this.px(p.l + 1),
-          this.py(row) + (HALF_ROW_PX >> 1),
-          (p.w - 2) * CHAR_WIDTH_PX,
-          HALF_ROW_PX
-        );
-        this.ctx.restore();
+        this.fillRoundedPx(barCx, barCy, barW, barH >> 1, barR, COLOR.cData2, 160);
       }
 
-      // Address breakpoint marker
+      // Address breakpoint: cName at 64/255 over the text (:1533-1535).
       const hasBrkAddr = (this.state.breakValue & BREAK_ADDR) !== 0 &&
                         ((this.state.breakValue >>> 12) & 0xFFFFF) === addr;
-      if (hasBrkAddr) {
-        // Red dot marker at left
-        this.ctx.fillStyle = '#FF4040';
-        this.ctx.beginPath();
-        this.ctx.arc(this.px(p.l) + 4, this.py(row) + 8, 3, 0, Math.PI * 2);
-        this.ctx.fill();
+      if (hasBrkAddr && !hiddenPC) {
+        this.fillRoundedPx(barCx, barCy, barW, barH, barR, COLOR.cName, 64);
       }
     }
   }
