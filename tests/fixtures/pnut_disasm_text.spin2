@@ -1,0 +1,45 @@
+DAT
+        org     0
+c0      sub     $1D5,#1 wz
+        if_nz   ret
+        _ret_   rdfast  #0,pb
+        mov     pa,ptra wcz
+c4      djnz    $10,#c0
+        tjz     pa,#c4
+        jmp     #c0
+        jmp     #\c4
+        loc     pa,#c0
+        loc     ptra,#\c4
+        calld   pb,#c0
+        rdlong  pa,ptra++
+        rdlong  pa,--ptrb[3]
+        rdlong  pa,ptra[-2]
+        rdlong  pa,#$20
+        wrlong  pa,ptrb[5]
+        drvh    #3 addpins 2
+        testp   #5 andc
+        testb   pa,#7 orz
+        bitl    pa,#2 addbits 3
+        getbyte pa,pb,#2
+        setnib  pa,#$F,#5
+        getword pa,pb,#1
+        altd    pa
+        alti    pa
+        not     pa
+        modcz   _c,_nz wcz
+        modc    _set wc
+        augs    #$12345
+        mov     pa,#$1FF
+        cogid   pa wc
+        rep     #3,#4
+        akpin   #2
+        setq    #$F
+        waitx   #10 wcz
+        getct   pa wc
+        rdlut   pa,pb wz
+        nop
+        orgh    $400
+h0      djnz    pa,#h0
+        jmp     #h0
+        loc     pb,#h0
+        jmp     #\h0

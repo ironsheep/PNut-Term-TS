@@ -27,15 +27,17 @@ describe('Pasm2Disassembler (§4/§5)', () => {
 
   it('renders D,S operands with the immediate (#) flag from bit 18', () => {
     const reg = dis.decode(enc(ALWAYS, 0x08, 0b000, 0x101, 0x102)); // I=0
-    expect(reg.operands).toBe('$101, $102');
+    expect(reg.operands).toBe('$101,$102');                          // PNut: no space after commas
     const imm = dis.decode(enc(ALWAYS, 0x08, 0b001, 0x101, 0x05));  // I=1 → #S
-    expect(imm.operands).toBe('$101, #$5');
+    expect(imm.operands).toBe('$101,#$005');                         // da_sh: three hex digits
   });
 
-  it('decodes the condition field (bits 31:28)', () => {
-    expect(dis.decode(enc(0xa, 0x08, 0, 1, 2)).mnemonic).toBe('if_z add');   // 1010 = if_z
-    expect(dis.decode(enc(0xc, 0x08, 0, 1, 2)).mnemonic).toBe('if_c add');   // 1100 = if_c
-    expect(dis.decode(enc(ALWAYS, 0x08, 0, 1, 2)).mnemonic).toBe('add');     // 1111 = always (no prefix)
+  it('decodes the condition field (bits 31:28) into its own 12-column field', () => {
+    // p2com.asm da_cond: 12 characters per condition, then one space.
+    expect(dis.decode(enc(0xa, 0x08, 0, 1, 2)).text.startsWith('if_z         add ')).toBe(true);
+    expect(dis.decode(enc(0xc, 0x08, 0, 1, 2)).text.startsWith('if_c         add ')).toBe(true);
+    expect(dis.decode(enc(ALWAYS, 0x08, 0, 1, 2)).text.startsWith('             add ')).toBe(true);
+    expect(dis.decode(enc(0xa, 0x08, 0, 1, 2)).mnemonic).toBe('add');
   });
 
   it('resolves 1101011 sub-opcodes (specific S-field) before the generic group', () => {
@@ -106,7 +108,7 @@ describe('Pasm2Disassembler (§4/§5)', () => {
     dis.decode(augs); // a preceding AUGS must leave no residual state
     const after = dis.decode(movImm);
     expect(after).toEqual(before);
-    expect(after.operands).toBe('$101, #$5'); // bare 9-bit imm, not augmented
+    expect(after.operands).toBe('$101,#$005'); // bare 9-bit imm, not augmented
     // A SETQ followed by a block RDLONG: the RDLONG names itself only, no count.
     const rdlong = dis.decode(enc(ALWAYS, 0x58, 0, 1, 2));
     expect(rdlong.mnemonic).toBe('rdlong');

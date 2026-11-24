@@ -18,11 +18,12 @@
  * on a machine with pnut-ts; the committed JSON keeps this test self-contained
  * (pnut-ts is NOT required at test time).
  *
- * SCOPE: this verifies mnemonic naming across every encoding class the decoder
- * supports. Byte-exact operand-TEXT/alignment parity is NOT asserted here —
- * pnut-ts emits no disassembly text, so the only authoritative operand-text
- * reference would be the original Pascal PNut disassembler (unavailable). See
- * TECHNICAL-DEBT.md §2.
+ * SCOPE: this verifies mnemonic naming across every encoding class. Exact text
+ * (operands, columns, effects) is asserted by tests/pnutDisassemblerText.test.ts
+ * against PNut's own disassembler rules (p2com.asm _disassemble).
+ *
+ * Where PNut's disassembler names an encoding differently from the source
+ * alias that produced it, the expectation is PNut's name (DISPLAY_NAME below).
  */
 
 import { readFileSync } from 'fs';
@@ -38,6 +39,14 @@ const corpusData = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'pasm2_co
   corpus: CorpusEntry[];
 };
 const corpus: CorpusEntry[] = corpusData.corpus;
+
+/**
+ * Source aliases PNut's disassembler shows under another name. AKPIN has no
+ * `da_ins` row: the assembler encodes it as WRPIN #1,S (p2com.asm:5723), so
+ * PNut displays `wrpin`.
+ */
+const DISPLAY_NAME: { [sourceMnemonic: string]: string } = { akpin: 'wrpin' };
+const shown = (mnem: string): string => DISPLAY_NAME[mnem] ?? mnem;
 
 describe('PASM2 disassembler — source-driven corpus on real pnut-ts encodings (§6)', () => {
   const dis = new Pasm2Disassembler();
@@ -56,16 +65,16 @@ describe('PASM2 disassembler — source-driven corpus on real pnut-ts encodings 
     (word, mnem, addr) => {
       const d = dis.decode(parseInt(word, 16) >>> 0, addr);
       expect(d.known).toBe(true);
-      expect(d.mnemonic).toBe(mnem);
+      expect(d.mnemonic).toBe(shown(mnem));
     }
   );
 
-  it('names 100% of the corpus (no raw-hex fallback, no mnemonic mismatch)', () => {
+  it('names 100% of the corpus (no <error>, no mnemonic mismatch)', () => {
     const misses = corpus.filter((e) => {
       const d = dis.decode(parseInt(e.word, 16) >>> 0, e.addr);
-      return !d.known || d.mnemonic !== e.mnem;
+      return !d.known || d.mnemonic !== shown(e.mnem);
     });
     // Surface every miss by name so a coverage regression is actionable.
-    expect(misses.map((m) => `${m.word} expected '${m.mnem}'`)).toEqual([]);
+    expect(misses.map((m) => `${m.word} expected '${shown(m.mnem)}'`)).toEqual([]);
   });
 });
