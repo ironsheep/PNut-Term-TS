@@ -3,15 +3,16 @@
 > ## 📤 HANDOFF SNAPSHOT — not the maintained copy
 >
 > The canonical document is **`DOCs/USER-GUIDE.md`**. Re-snapshotted **2026-11-24** at
-> **v1.1.2**. The changes since the 2026-09-29 snapshot are the v1.1.2 session-ending
-> rules: `debug(DEBUG_END_SESSION)` ends a run in every mode with no option needed, which
-> replaces the old *End-session markers* section with *Ending a session from your program*.
-> The substantive earlier re-snapshot (2026-09-09, v1.0.7: the baud rename and split, and the
-> exit-code contract) is described in this directory's `README.md`.
+> **v1.1.3**. Its only change from v1.1.2 is the version stamp. The changes since the
+> 2026-09-29 snapshot are the v1.1.2 session-ending rules: `debug(DEBUG_END_SESSION)` ends a
+> run in every mode with no option needed, which replaces the old *End-session markers*
+> section with *Ending a session from your program*. The substantive earlier re-snapshot
+> (2026-09-09, v1.0.7: the baud rename and split, and the exit-code contract) is described in
+> this directory's `README.md`.
 >
 > Edit the canonical copy, then re-snapshot. Never edit both.
 
-*Version 1.1.2*
+*Version 1.1.3*
 
 PNut-Term-TS is a cross-platform debug terminal for the Parallax Propeller 2 (P2).
 It interprets the `debug()` output a P2 program emits over a serial (PropPlug/FTDI)

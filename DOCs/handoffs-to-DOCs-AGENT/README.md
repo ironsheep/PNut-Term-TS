@@ -93,7 +93,7 @@ reported as out of diff scope rather than passing quietly.
 |---|---|---|
 | 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-11-24** | **v1.1.3** (plan v2 certified on hardware 2026-11-24; Test 0 step 4 and Test 4 steps 6–7 rewritten for the disassembly-parity change, re-check owed) |
 | 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-11-24** | **v1.1.3** (*Disassembly View* now describes rows exactly as PNut v55 writes and draws them) |
-| 2. `User-Guide-FEED.md` | **2026-11-24** | **v1.1.2** (`debug(DEBUG_END_SESSION)` ends a run in every mode; *Ending a session from your program* replaces *End-session markers*) |
+| 2. `User-Guide-FEED.md` | **2026-11-24** | **v1.1.3** (`debug(DEBUG_END_SESSION)` ends a run in every mode; *Ending a session from your program* replaces *End-session markers*) |
 | 3. `LOGGING-STANDARDS-FEED.md` | **2026-09-09** | **v1.0.7** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 snapshot — still code-accurate at v1.0.7: `src/utils/windowPlacer.ts` has not changed since |
 
