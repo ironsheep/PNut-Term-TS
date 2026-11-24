@@ -91,14 +91,15 @@ reported as out of diff scope rather than passing quietly.
 
 | Feed | Snapshot | Current as of |
 |---|---|---|
-| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-09-08** | **v1.0.7** (plan at v2, incl. Phase D; PNut column of the two-build run complete, PNut-term-ts column still open) |
-| 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-09-08** | **v1.0.7** (input surface code-verified; carries the hint-bar correction) |
-| 2. `User-Guide-FEED.md` | **2026-09-29** | **v1.1.0** (adds exit code `70`, internal error; body otherwise as of 2026-09-09) |
+| 1. `SingleStep-Debugger-Interactive-Test-Plan.md` | **2026-11-24** | **v1.1.3** (plan v2 certified on hardware 2026-11-24; Test 0 step 4 and Test 4 steps 6–7 rewritten for the disassembly-parity change, re-check owed) |
+| 1a. `SINGLE-STEP-DEBUGGER-FEED.md` | **2026-11-24** | **v1.1.3** (*Disassembly View* now describes rows exactly as PNut v55 writes and draws them) |
+| 2. `User-Guide-FEED.md` | **2026-11-24** | **v1.1.2** (`debug(DEBUG_END_SESSION)` ends a run in every mode; *Ending a session from your program* replaces *End-session markers*) |
 | 3. `LOGGING-STANDARDS-FEED.md` | **2026-09-09** | **v1.0.7** |
 | 4. `WINDOW-LAYOUT-FEED.md` | 2026-07-21 | v0.10.8 snapshot — still code-accurate at v1.0.7: `src/utils/windowPlacer.ts` has not changed since |
 
-**Every feed in this table is current as of 2026-09-09.** Feeds 2 and 3 had been stale for
-seven releases; see below for what a manual author must un-learn from the previous copies.
+**Every feed in this table is current as of 2026-11-24** (`check_feed_freshness.sh`: 4
+current, 1 derived from code). On 2026-09-09, feeds 2 and 3 had been stale for seven
+releases; see below for what a manual author must un-learn from those older copies.
 
 The user guide was substantially corrected in the pre-1.0 documentation audit immediately before
 the first snapshot; re-pull if the repo has advanced. **Feeds 2 and 3 carry the content as

@@ -10,6 +10,13 @@
 > Tests 0–14 and Phase D. It is recorded in each item's PNut-term-ts row and in the summary
 > matrix. The historical `**Status:**` lines are left as they were.
 >
+> **Re-check owed after the disassembly-parity change (2026-11-24, after that certification).**
+> The disassembly pane now matches PNut v55's own disassembler and row drawing: columns,
+> effects, operand style, and the PC bar under the text only. The address breakpoint is now
+> a yellow highlight, not a red dot. **Test 0 step 4** and **Test 4 steps 6–7** were rewritten
+> for it and must be re-run on hardware against PNut. The rest of the certification stands:
+> the change touches only how rows are drawn, not what is fetched or stepped.
+>
 > **Purpose**: Validate the single-step debugger against real P2 hardware. Tests run
 > simplest → most complex. Each test names the P2 program to load, the keys/clicks to
 > press, and what you should see.
@@ -191,7 +198,7 @@ regressions immediately, before any behavioral test muddies the picture.
 | 1 | Compile and download | A single debugger window opens, titled **"Debugger - Cog 0"**, at a sensible cascade position. |
 | 2 | Observe the **header row** | **PC** (5 hex digits), **C** and **Z** flags ('0'/'1'), **SKIP** panel, **XBYTE** panel, and **CT** (16 hex digits split 8+8) all render with their labels. |
 | 3 | Observe the **left column** | **REG heatmap** renders as a bitmap grid (cold/dark at rest). |
-| 4 | Observe the **center** | **Disassembly** panel shows **R-xxx** cog-register addresses; the PC line is highlighted (inverse colors); a few decoded mnemonics are visible and read sensibly. |
+| 4 | Observe the **center** | **Disassembly** panel shows **R-xxx** cog-register addresses (bold green) and the instruction text in green. The text lines up in columns: condition, mnemonic, operands, then effects (`wc` / `wz` / `wcz`) in a column of their own. The PC line has a white rounded bar under the **instruction text only**, with the text bold dark green; its address and hex are unchanged. Hold it against PNut: the columns and operand style (`$1D5,#$001`, no space after commas, `pa`/`ptra` by name) must match character for character. |
 | 5 | Observe the **data panels** | **WATCH**, **SFR** (two columns), **PTR**, **STACK**, and **EXEC** panels are all present with correct headings. |
 | 6 | Observe the **pin/status panels** | **PIN** panel shows three rows **DIR / OUT / IN** (64 binary digits each, split 32+32); **STATUS** indicators (**INIT / STALLI / STR / MOD / LUTS**) render, dimmed when inactive. |
 | 7 | Observe the **interrupt/smart panels** | **SMART**, **INT**, and the **events** panel render with labels. |
@@ -364,8 +371,8 @@ low registers (`count`/`limit`) as you step; R-key and click both reset the list
 | 3 | **Ctrl+mouse wheel** | Scrolls by 4 instructions per tick (vs 1 without Ctrl). |
 | 4 | **Shift+mouse wheel** | Scrolls by 16 instructions per tick. |
 | 5 | **Left-click** in disassembly box | Returns to PC-follow (*dmPC*). Disassembly snaps back to show PC. |
-| 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. Breakpoint marker (●) appears in red at left edge. ADDR button highlights in button panel. |
-| 7 | Right-click same line again | Breakpoint clears. Marker disappears. ADDR button dims. |
+| 6 | **Right-click** on a disassembly line | Toggles address breakpoint at that line. A translucent **yellow highlight** covers that line's instruction text (Pascal `cName` at 64/255; there is no red marker). ADDR button highlights in button panel. |
+| 7 | Right-click same line again | Breakpoint clears. The yellow highlight disappears. ADDR button dims. |
 | 8 | Click on the **REG heat strip** (left side) at a spot roughly ⅓ of the way down | Disassembly locks to cog space (*dmCog*), and **the register you clicked lands in the MIDDLE of the window, not on the top line** — count 8 lines down from the top and that is the register under your click, ±1. Note the top-line address; step 8a re-uses it. |
 | 8a | Click the **very bottom pixel** of the REG strip | Top line reads **`R-1F0`** exactly. It must not run past `$1F0`, and must not wrap to `R-000`. |
 | 8b | Click the **very bottom pixel** of the LUT strip | Top line reads **`R-3F0`** exactly (LUT range is `$200..$3F0`). |

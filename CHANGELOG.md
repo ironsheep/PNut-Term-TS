@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.1.3 (2026-11-24)
+
+The single-step debugger's disassembly reads exactly as PNut's does.
+
+### Bug Fixes
+
+- **Debugger disassembly text**: matches PNut's own disassembler character for character.
+  Effects (`wc`, `wz`, `wcz`, `andc`, `orz`, …) were missing and now appear in a column of
+  their own. The condition, mnemonic and operands line up from row to row. Immediates have
+  three digits (`#$001`), commas have no space after them, and relative branch targets
+  name the right address
+- **Debugger disassembly text**: pin and bit ranges (`#5..3`), PTRA/PTRB expressions
+  (`--ptrb[3]`), MODCZ operands, and AUGS/AUGD values show as PNut shows them. A long that
+  is not an instruction shows `<error>` instead of its raw hex
+- **Debugger disassembly rows**: drawn as PNut draws them. The instruction text is green.
+  The PC line's bar sits under the instruction text only, and the address and hex keep
+  their colours. LUT addresses read `L-200`..`L-3FF` instead of `L-000`..`L-1FF`
+- **Debugger address breakpoints**: shown as a translucent yellow highlight on the line, as
+  in PNut, instead of a red dot
+- **Debugger SFR panel**: register addresses are bold, as in PNut
+
 ## v1.1.2 (2026-11-12)
 
 A program that ends with `debug(DEBUG_END_SESSION)` now ends the session.

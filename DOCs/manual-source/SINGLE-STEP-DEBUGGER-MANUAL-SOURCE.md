@@ -425,7 +425,35 @@ stays full; the LUT strip adds `$200` after the clamp.
 | **Cog Lock** (`dmCog`) | Locked to a cog/LUT address; scroll with mouse wheel |
 | **Hub Lock** (`dmHub`) | Locked to a hub address; scroll with mouse wheel |
 
-Each line shows: address + raw 32-bit opcode + disassembled mnemonic and operands. The current PC line is highlighted with an inverse-color rounded rectangle. Instructions with SKIP bits set show a semi-transparent strikethrough. Address breakpoints show as semi-transparent highlights.
+Each line shows the address, the raw 32-bit instruction long, and its disassembly, as PNut's
+own disassembler writes it:
+
+- **Address.** Cog view: `R-000`..`R-1FF` for registers and `L-200`..`L-3FF` for LUT. Hub
+  view: five hex digits, four bytes per line.
+- **Columns.** The condition (`if_nz`, `_ret_`, …) comes first, then the mnemonic, then the
+  operands. Effects (`wc`, `wz`, `wcz`, and `andc` / `orz` / `xorc`… on TESTB / TESTP) sit in
+  a column of their own at the right.
+- **Operands.** Registers are `$xxx`, three hex digits. `$1F0`–`$1FF` are shown by name
+  (`ijmp3`…`iret1`, `pa`, `pb`, `ptra`, `ptrb`, `dira`, `dirb`, `outa`, `outb`, `ina`,
+  `inb`). Immediates are `#$xxx`. There is no space after commas.
+- **Special forms:**
+  - Pin and bit ranges read `#end..base` in decimal (`drvh #3 addpins 2` shows as `#5..3`).
+  - PTRx expressions read as written (`ptra++`, `--ptrb[3]`, `ptra[-2]`).
+  - MODCZ operands read `_clr`…`_set`.
+  - AUGS/AUGD show the augmented value with its low bits as `xx`, e.g. `#$000122xx`.
+  - A long that is not an instruction shows `<error>`.
+- **Branch targets.** Absolute targets read `#\$xxx`. JMP, CALL and LOC relative targets are
+  shown as the resolved address, `#$xxx`. DJNZ, TJZ, CALLD and the other register-relative
+  branches show the resolved address without a `$`, e.g. `djnz $010,#000`.
+- **PNut quirk, reproduced deliberately.** A PC-relative `LOC` in cog code shows its offset
+  scaled as a JMP's, so `loc pa,#label` can name a slightly different address than its target.
+  PNut v55 shows the same text.
+- **Debug ROM.** In cog view, `$1F8`–`$1FF` show `[ROM]` and the debug ROM's own code.
+
+The current PC line has a green rounded bar under the instruction text, with the text in
+bold. The address and the instruction long keep their normal colours. An instruction a
+pending SKIP will skip carries a half-height translucent band. A line with an address
+breakpoint carries a translucent yellow highlight.
 
 ### Register Watch List (Middle-Right)
 
